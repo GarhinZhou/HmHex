@@ -1,6 +1,6 @@
 # ImHex for OpenHarmony (OHOS PC)
 
-ImHex 逆向工程十六进制编辑器移植到 OpenHarmony PC（鸿蒙 2in1 / 平板）的完整工程。
+ImHex 逆向工程十六进制编辑器移植到 Harmony PC 的完整工程。
 以单个 HAP 应用形式运行：ArkUI `XComponent` 承载由 GLFW 兼容层 + ImGui 驱动的
 完整 ImHex GUI（含 9 个内置插件静态链接），通过 NAPI 桥接文件选择、保存、
 剪贴板、置顶、拖放导入等系统能力。
