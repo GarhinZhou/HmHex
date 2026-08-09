@@ -1,0 +1,104 @@
+name: "Unit Tests"
+
+on:
+  push:
+    branches:
+      - 'master'
+      - 'releases/**'
+      - 'tests/**'
+      - 'feature/**'
+  pull_request:
+    branches:
+      - 'master'
+      - 'releases/**'
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: 🧰 Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: 📜 Setup ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ runner.os }}-tests-build-${{ github.run_id }}
+        restore-keys: ${{ runner.os }}-tests-build
+        max-size: 50M
+
+    - name: ⬇️ Install dependencies
+      run: |
+        sudo apt update
+        sudo bash dist/get_deps_debian.sh
+
+    - name: 🛠️ Build
+      run: |
+        set -x
+        mkdir -p build
+        cd build
+        CC=gcc-14 CXX=g++-14 cmake                                                                                 \
+          -DCMAKE_BUILD_TYPE=Debug                                                                                 \
+          -DIMHEX_ENABLE_UNIT_TESTS=ON                                                                             \
+          -DIMHEX_ENABLE_PLUGIN_TESTS=ON                                                                           \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache                                                                       \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                                                                     \
+          -DCMAKE_C_FLAGS="-fuse-ld=lld -fsanitize=address,leak,undefined -fno-sanitize-recover=all --coverage"    \
+          -DCMAKE_CXX_FLAGS="-fuse-ld=lld -fsanitize=address,leak,undefined -fno-sanitize-recover=all --coverage"  \
+          -DIMHEX_OFFLINE_BUILD=ON                                                                                 \
+          -G Ninja                                                                                                 \
+          ..
+        ninja unit_tests
+        ninja imhex_all
+
+    - name: 🧪 Perform plcli Integration Tests
+      run: |
+        cd lib/external/pattern_language
+        python tests/integration/integration.py ../../../build/imhex --pl
+
+    - name: 🧪 Perform Unit Tests
+      run: |
+        cd build
+        ctest --output-on-failure
+
+    # Generate report from all gcov .gcda files
+    #- name: 🧪 Generate coverage report
+    #  run: |
+    #    sudo apt install python3-pip python3-venv
+    #    python3 -m venv venv
+    #    . venv/bin/activate
+    #    pip3 install gcovr
+    #    cd build
+    #    gcovr --gcov-executable /usr/bin/gcov-14 --exclude '.*/yara_rules/' --exclude '.*/third_party/' --exclude '.*/external/' --root .. --xml coverage_report.xml --verbose --gcov-ignore-errors all
+    #
+    #- name: Upload coverage reports to Codecov
+    #  env:
+    #      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    #  if: ${{ env.CODECOV_TOKEN }}
+    #  uses: codecov/codecov-action@v4
+    #  with:
+    #    fail_ci_if_error: true
+    #    token: ${{ secrets.CODECOV_TOKEN }}
+    #    file: build/coverage_report.xml
+
+  langs:
+    name: 🧪 Langs
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: 🧰 Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Check langs
+      run:
+        python3 tests/check_langs.py

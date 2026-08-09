@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "ImHex entry module",
+  "main": "",
+  "author": "AICoding",
+  "license": "GPL-2.0",
+  "dependencies": {
+    "libentry": "file:./src/main/cpp/types/libentry"
+  }
+}

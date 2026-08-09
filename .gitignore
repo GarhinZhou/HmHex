@@ -1,0 +1,40 @@
+# --- Build artifacts (DevEco / hvigor / CMake) ---
+build/
+**/build/
+**/.cxx/
+.hvigor/
+oh_modules/
+**/oh_modules/
+entry/build/
+entry/.cxx/
+
+# --- Local signing material (NEVER commit) ---
+*.p12
+*.p7b
+*.cer
+*.pem
+*.keystore
+
+# --- Logs & crash dumps ---
+*.log
+hilog*.txt
+jscrash-*.log
+cppcrash-*.log
+This PC-*.txt
+
+# --- IDE / OS cruft ---
+.bitfun/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# --- Third-party build outputs ---
+deps/mbedtls-build/
+imhex-decompiler-plugin/dist/
+# deps/prefix/ is committed on purpose: the decompiler plugin links the
+# prebuilt capstone static library from it (see imhex-decompiler-plugin/CMakeLists.txt).
+
+# --- Misc archives ---
+*.tar.gz
+*.zip

@@ -1,0 +1,45 @@
+{
+  "app": {
+    // Signing config is intentionally stripped from this repository: the
+    // original contained local keystore paths and passwords. Configure your
+    // own signing in DevEco Studio (File -> Project Structure -> Signing
+    // Configs, check "Automatically generate signature") before building.
+    "signingConfigs": [],
+    "products": [
+      {
+        "name": "default",
+        // Re-enable once you added a signingConfig with name "default"
+        // "signingConfig": "default",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

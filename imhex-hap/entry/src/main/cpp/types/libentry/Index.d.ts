@@ -1,0 +1,22 @@
+declare const nativeModule: {
+  startImHex(surfaceId: string, filesDir: string, densityDpi: number): void;
+  onTouch(x: number, y: number, action: number): void;
+  onMouse(x: number, y: number, action: number, button?: number): void;
+  onKey(keyCode: number, action: number): void;
+  onScroll(x: number, y: number): void;
+  setFileOpenCallback(callback: (multiple: number) => void): void;
+  openFile(path: string): void;
+  setSaveFileCallback(callback: () => void): void;
+  saveToFd(fd: number): void;
+  setClipboardCallback(callback: (text: string) => void): void;
+  updateClipboardCache(text: string): void;
+  resetKeys(): void;
+  setTopmostCallback(callback: (topmost: number) => void): void;
+  setTitleButtonWidth(width: number): void;
+  setExitAppCallback(callback: () => void): void;
+  setOpenWebpageCallback(callback: (url: string) => void): void;
+  setCursorCallback(callback: (shape: number) => void): void;
+  unlockFrameRate(): void;
+  openFileDropped(path: string): void;
+};
+export default nativeModule;

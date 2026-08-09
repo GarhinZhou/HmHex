@@ -1,0 +1,89 @@
+// -*- C++ -*-
+//===----------------------------------------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_RANGES
+#define _LIBCPP_RANGES
+
+
+#include <__ranges/access.h>
+#include <__ranges/all.h>
+#include <__ranges/common_view.h>
+#include <__ranges/concepts.h>
+#include <__ranges/copyable_box.h>
+#include <__ranges/counted.h>
+#include <__ranges/dangling.h>
+#include <__ranges/data.h>
+#include <__ranges/drop_view.h>
+#include <__ranges/empty.h>
+#include <__ranges/empty_view.h>
+#include <__ranges/enable_borrowed_range.h>
+#include <__ranges/enable_view.h>
+#include <__ranges/filter_view.h>
+#include <__ranges/iota_view.h>
+#include <__ranges/join_view.h>
+#include <__ranges/lazy_split_view.h>
+#include <__ranges/non_propagating_cache.h>
+#include <__ranges/owning_view.h>
+#include <__ranges/range_adaptor.h>
+#include <__ranges/rbegin.h>
+#include <__ranges/ref_view.h>
+#include <__ranges/rend.h>
+#include <__ranges/reverse_view.h>
+#include <__ranges/single_view.h>
+#include <__ranges/size.h>
+#include <__ranges/subrange.h>
+#include <__ranges/take_view.h>
+#include <__ranges/transform_view.h>
+#include <__ranges/view_interface.h>
+#include <__ranges/views.h>
+#include <__ranges/zip_view.h>
+
+
+#include <__assert> // all public C++ headers provide the assertion handler
+#include <__config>
+#include <__ranges/access.h>
+#include <__ranges/all.h>
+#include <__ranges/common_view.h>
+#include <__ranges/concepts.h>
+#include <__ranges/counted.h>
+#include <__ranges/dangling.h>
+#include <__ranges/data.h>
+#include <__ranges/drop_view.h>
+#include <__ranges/empty.h>
+#include <__ranges/empty_view.h>
+#include <__ranges/enable_borrowed_range.h>
+#include <__ranges/enable_view.h>
+#include <__ranges/filter_view.h>
+#include <__ranges/iota_view.h>
+#include <__ranges/join_view.h>
+#include <__ranges/lazy_split_view.h>
+#include <__ranges/rbegin.h>
+#include <__ranges/ref_view.h>
+#include <__ranges/rend.h>
+#include <__ranges/reverse_view.h>
+#include <__ranges/single_view.h>
+#include <__ranges/size.h>
+#include <__ranges/subrange.h>
+#include <__ranges/take_view.h>
+#include <__ranges/transform_view.h>
+#include <__ranges/view_interface.h>
+#include <__ranges/views.h>
+#include <__ranges/zip_view.h>
+#include <__tuple> // TODO: <ranges> has to export std::tuple_size. Replace this, once <tuple> is granularized.
+#include <compare>          // Required by the standard.
+#include <initializer_list> // Required by the standard.
+#include <iterator>         // Required by the standard.
+#include <type_traits>
+#include <version>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#  pragma GCC system_header
+#endif
+
+#endif // _LIBCPP_RANGES

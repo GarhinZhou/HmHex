@@ -1,0 +1,189 @@
+#pragma once
+
+#include <hex/api/imhex_api/provider.hpp>
+#include <hex/api/events/events_provider.hpp>
+#include <hex/api/events/events_lifecycle.hpp>
+#include <hex/api/events/requests_provider.hpp>
+
+#if defined(IMHEX_OHOS_PORT)
+    #include <hex/helpers/debugging.hpp>
+    #include <hex/helpers/logger.hpp>
+    #include <hex/trace/stacktrace.hpp>
+    #include <typeinfo>
+#endif
+
+
+#include <map>
+#include <ranges>
+#include <utility>
+
+namespace hex {
+
+    #if !defined(HEX_MODULE_EXPORT)
+        namespace prv {
+            class Provider;
+        }
+    #endif
+
+    template<typename T>
+    class PerProvider {
+    public:
+        PerProvider() { this->onCreate(); }
+        PerProvider(const PerProvider&) = delete;
+        PerProvider(PerProvider&&) = delete;
+        PerProvider& operator=(const PerProvider&) = delete;
+        PerProvider& operator=(PerProvider &&) = delete;
+
+        ~PerProvider() { this->onDestroy(); }
+
+        T* operator->() {
+            return &this->get();
+        }
+
+        const T* operator->() const {
+            return &this->get();
+        }
+
+        T& get(const prv::Provider *provider = ImHexApi::Provider::get()) {
+            if (provider == nullptr) [[unlikely]] {
+                #if defined(IMHEX_OHOS_PORT)
+                    hex::log::error("PerProvider::get called with nullptr (type: {})", typeid(T).name());
+                    hex::dbg::printStackTrace(hex::trace::getStackTrace());
+                #endif
+                throw std::invalid_argument("PerProvider::get called with nullptr");
+            }
+
+            return m_data[provider];
+        }
+
+        const T& get(const prv::Provider *provider = ImHexApi::Provider::get()) const {
+            if (provider == nullptr) [[unlikely]] {
+                #if defined(IMHEX_OHOS_PORT)
+                    hex::log::error("PerProvider::get (const) called with nullptr (type: {})", typeid(T).name());
+                    hex::dbg::printStackTrace(hex::trace::getStackTrace());
+                #endif
+                throw std::invalid_argument("PerProvider::get called with nullptr");
+            }
+
+            return m_data.at(provider);
+        }
+
+        void set(const T &data, const prv::Provider *provider = ImHexApi::Provider::get()) {
+            if (provider == nullptr) [[unlikely]]
+                throw std::invalid_argument("PerProvider::set called with nullptr");
+
+            m_data[provider] = data;
+        }
+
+        void set(T &&data, const prv::Provider *provider = ImHexApi::Provider::get()) {
+            if (provider == nullptr) [[unlikely]]
+                throw std::invalid_argument("PerProvider::set called with nullptr");
+
+            m_data[provider] = std::move(data);
+        }
+
+        T& operator*() {
+            return this->get();
+        }
+
+        const T& operator*() const {
+            return this->get();
+        }
+
+        PerProvider& operator=(const T &data) {
+            this->set(data);
+            return *this;
+        }
+
+        PerProvider& operator=(T &&data) {
+            this->set(std::move(data));
+            return *this;
+        }
+
+        operator T&() {
+            return this->get();
+        }
+
+        auto all() {
+            // OHOS workaround: view adapters in the bundled libcxx copy their
+            // range, which breaks non-copyable map values (unique_ptr).
+            // Return a lightweight zero-copy iterator view instead.
+            struct ValuesView {
+                using Map = std::map<const prv::Provider *, T>;
+                Map *map;
+
+                struct Iterator {
+                    typename Map::iterator it;
+                    T &operator*() const { return it->second; }
+                    Iterator &operator++() { ++it; return *this; }
+                    bool operator!=(const Iterator &other) const { return it != other.it; }
+                };
+
+                Iterator begin() { return { map->begin() }; }
+                Iterator end()   { return { map->end() }; }
+            };
+
+            return ValuesView{ &m_data };
+        }
+
+        void setOnCreateCallback(std::function<void(prv::Provider *, T&)> callback) {
+            m_onCreateCallback = std::move(callback);
+        }
+
+        void setOnDestroyCallback(std::function<void(prv::Provider *, T&)> callback) {
+            m_onDestroyCallback = std::move(callback);
+        }
+
+    private:
+        void onCreate() {
+            EventProviderOpened::subscribe(this, [this](prv::Provider *provider) {
+                auto [it, inserted] = m_data.emplace(provider, T());
+                auto &[key, value] = *it;
+                if (m_onCreateCallback)
+                    m_onCreateCallback(provider, value);
+            });
+
+            EventProviderDeleted::subscribe(this, [this](prv::Provider *provider){
+                if (auto it = m_data.find(provider); it != m_data.end()) {
+                    if (m_onDestroyCallback)
+                        m_onDestroyCallback(provider, m_data.at(provider));
+
+                    m_data.erase(it);
+                }
+            });
+
+            EventImHexClosing::subscribe(this, [this] {
+                m_data.clear();
+            });
+
+            // Moves the data of this PerProvider instance from one provider to another
+            MovePerProviderData::subscribe(this, [this](prv::Provider *from, prv::Provider *to) {
+                // Get the value from the old provider, (removes it from the map)
+                auto node = m_data.extract(from);
+
+                // Ensure the value existed
+                if (node.empty()) return;
+
+                // Delete the value from the new provider, that we want to replace
+                m_data.erase(to);
+
+                // Re-insert it with the key of the new provider
+                node.key() = to;
+                m_data.insert(std::move(node));
+            });
+        }
+
+        void onDestroy() {
+
+            EventProviderOpened::unsubscribe(this);
+            EventProviderDeleted::unsubscribe(this);
+            EventImHexClosing::unsubscribe(this);
+            MovePerProviderData::unsubscribe(this);
+        }
+
+    private:
+        std::map<const prv::Provider *, T> m_data;
+        std::function<void(prv::Provider *, T&)> m_onCreateCallback, m_onDestroyCallback;
+    };
+
+}

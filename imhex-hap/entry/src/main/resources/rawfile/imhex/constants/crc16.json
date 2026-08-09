@@ -1,0 +1,97 @@
+{
+    "name": "CRC16 Constants",
+    "values": [
+        {
+            "value": "10 21",
+            "name": "CRC-16/CCITT-FALSE Polynomial"
+        },
+        {
+            "value": "80 05",
+            "name": "CRC-16/ARC Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/AUG-CCITT Polynomial"
+        },
+        {
+            "value": "80 05",
+            "name": "CRC-16/BUYPASS Polynomial"
+        },
+        {
+            "value": "C8 67",
+            "name": "CRC-16/CDMA2000 Polynomial"
+        },
+        {
+            "value": "80 05",
+            "name": "CRC-16/DDS-110 Polynomial"
+        },
+        {
+            "value": "05 89",
+            "name": "CRC-16/DECT-R Polynomial"
+        },
+        {
+            "value": "05 89",
+            "name": "CRC-16/DECT-X Polynomial"
+        },
+        {
+            "value": "3D 65",
+            "name": "CRC-16/DNP Polynomial"
+        },
+        {
+            "value": "3D 65",
+            "name": "CRC-16/EN-13757 Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/GENIBUS Polynomial"
+        },
+        {
+            "value": "80 05",
+            "name": "CRC-16/MAXIM Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/MCRF4XX Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/RIELLO Polynomial"
+        },
+        {
+            "value": "8B B7",
+            "name": "CRC-16/T10-DIF Polynomial"
+        },
+        {
+            "value": "A0 97",
+            "name": "CRC-16/TELEDISK Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/TMS37157 Polynomial"
+        },
+        {
+            "value": "80 05",
+            "name": "CRC-16/USB Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-A Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/KERMIT Polynomial"
+        },
+        {
+            "value": "80 05",
+            "name": "CRC-16/MODBUS Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/X-25 Polynomial"
+        },
+        {
+            "value": "10 21",
+            "name": "CRC-16/XMODEM Polynomial"
+        }
+    ]
+}

@@ -1,0 +1,65 @@
+// -*- C++ -*-
+//===----------------------------------------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// NOTE: This header is a minimal re-implementation of libc++ 15's
+// <source_location>, provided because the OHOS toolchain's libcxx-ohos
+// ships without it. It is header-only and matches the upstream ABI.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_SOURCE_LOCATION
+#define _LIBCPP_SOURCE_LOCATION
+
+#include <__config>
+#include <cstdint>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#  pragma GCC system_header
+#endif
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+#if _LIBCPP_STD_VER > 17
+
+class source_location {
+    const char* __file_;
+    const char* __func_;
+    std::uint_least32_t __line_;
+    std::uint_least32_t __col_;
+
+    static constexpr bool __isnative() { return __has_builtin(__builtin_source_location); }
+
+public:
+    static consteval source_location current(
+        const char* __file = __builtin_FILE(),
+        const char* __func = __builtin_FUNCTION(),
+        std::uint_least32_t __line = __builtin_LINE(),
+        std::uint_least32_t __col = 0) noexcept {
+        source_location __loc;
+        __loc.__file_ = __file;
+        __loc.__func_ = __func;
+        __loc.__line_ = __line;
+        __loc.__col_  = __col;
+        return __loc;
+    }
+
+    constexpr source_location() noexcept
+        : __file_("unknown"), __func_("unknown"), __line_(0), __col_(0) {}
+
+    constexpr const char* file_name() const noexcept { return __file_; }
+    constexpr const char* function_name() const noexcept { return __func_; }
+    constexpr std::uint_least32_t line() const noexcept { return __line_; }
+    constexpr std::uint_least32_t column() const noexcept { return __col_; }
+};
+
+#endif // _LIBCPP_STD_VER > 17
+
+_LIBCPP_END_NAMESPACE_STD
+
+#endif // _LIBCPP_SOURCE_LOCATION

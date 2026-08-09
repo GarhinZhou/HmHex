@@ -1,0 +1,92 @@
+name: "Unit Tests"
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  tests:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-24.04
+    env:
+      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: 🧰 Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: ⬇️ Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y       \
+            build-essential       \
+            ccache                \
+            gcc-14                \
+            g++-14                \
+            lld                   \
+            ${PKGCONF:-}          \
+            cmake                 \
+            ninja-build           \
+            lcov                  \
+            gcovr
+
+    - name: 📜 Setup ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ runner.os }}-tests-${{ github.run_id }}
+        restore-keys: ${{ runner.os }}-tests
+        max-size: 1G
+
+    - name: 🛠️ Build
+      run: |
+        mkdir -p build
+        cd build
+        CC=gcc-14 CXX=g++-14 cmake                                                                                    \
+          -DCMAKE_BUILD_TYPE=Debug                                                                                    \
+          -DCMAKE_C_FLAGS="-O0 -fuse-ld=lld --coverage -fsanitize=address,leak,undefined -fno-sanitize-recover=all"   \
+          -DCMAKE_CXX_FLAGS="-O0 -fuse-ld=lld --coverage -fsanitize=address,leak,undefined -fno-sanitize-recover=all" \
+          -DLIBPL_ENABLE_TESTS=ON                                                                                     \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache                                                                          \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache                                                                        \
+          -G Ninja                                                                                                    \
+          ..
+        ninja unit_tests 
+        ninja plcli
+
+    - name: 🧪 Perform plcli Integration Tests
+      run: |
+        python tests/integration/integration.py build/cli/plcli
+
+    - name: 🧪 Perform Unit Tests
+      run: |
+        cd build
+        ctest --output-on-failure
+
+     # Generate report from all gcov .gcda files
+    - name: 🧪 Generate coverage report
+      run: |
+        gcovr --gcov-executable /usr/bin/gcov-14 -r . build --xml coverage_report.xml --verbose
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        fail_ci_if_error: true
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: coverage_report.xml
+
+  imhex_patterns_tests:
+    name: 🧪 ImHex Patterns Tests
+    needs: tests
+    uses: WerWolv/ImHex-Patterns/.github/workflows/tests.yml@master
+    with:
+      pattern_language_git_repo: ${{ github.server_url }}/${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+      pattern_language_git_hash: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}

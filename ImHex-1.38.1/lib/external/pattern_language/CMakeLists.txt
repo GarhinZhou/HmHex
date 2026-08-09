@@ -1,0 +1,99 @@
+cmake_minimum_required(VERSION 3.20)
+project(PatternLanguage)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+option(LIBPL_SHARED_LIBRARY "Compile the library as a shared library" OFF)
+option(LIBPL_ENABLE_TESTS "Enable testing" OFF)
+option(LIBPL_ENABLE_CLI "Enable building the CLI tool" ON)
+option(LIBPL_BUILD_CLI_AS_EXECUTABLE "Build the CLI tool as an executable" ON)
+option(LIBPL_ENABLE_EXAMPLE "Enable building the examples" OFF)
+option(LIBPL_ENABLE_PRECOMPILED_HEADERS "Enable building with precompiled headers" OFF)
+
+# if enabled, add a unit_test custom target for all the unit tests to be registered against
+if (LIBPL_ENABLE_TESTS)
+    if(NOT TARGET unit_tests)
+        enable_testing()
+        add_custom_target(unit_tests)
+    endif()
+endif ()
+
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-stringop-overflow>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-frtti>)
+elseif (MSVC)
+elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-declarations>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-frtti>)
+elseif (NOT (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"))
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-array-bounds>)
+endif()
+
+if (APPLE)
+    # On macOS, when using clang from Homebrew, properly setup the libc++ library path so
+    # it's using the one from Homebrew instead of the system one.
+    execute_process(COMMAND brew --prefix llvm OUTPUT_VARIABLE LLVM_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if (NOT LLVM_PREFIX STREQUAL "" AND ${CMAKE_CXX_COMPILER} STREQUAL "${LLVM_PREFIX}/bin/clang++")
+        set(CMAKE_EXE_LINKER_FLAGS     "${CMAKE_EXE_LINKER_FLAGS}    -L${LLVM_PREFIX}/lib/c++")
+        set(CMAKE_SHARED_LINKER_FLAGS  "${CMAKE_SHARED_LINKER_FLAGS} -L${LLVM_PREFIX}/lib/c++")
+        set(CMAKE_MODULE_LINKER_FLAGS  "${CMAKE_MODULE_LINKER_FLAGS} -L${LLVM_PREFIX}/lib/c++")
+    endif()
+endif()
+
+if (CMAKE_CXX_COMPILER MATCHES "\\/em\\+\\+(-[a-zA-Z0-9.])?$")
+    add_compile_definitions(OS_WEB)
+elseif (WIN32)
+    add_compile_definitions(OS_WINDOWS)
+elseif (APPLE)
+    add_compile_definitions(OS_MACOS)
+elseif (UNIX AND NOT APPLE)
+    add_compile_definitions(OS_LINUX)
+endif ()
+
+if (NOT USE_SYSTEM_FMT)
+    if (NOT TARGET fmt::fmt)
+        add_subdirectory(external/fmt EXCLUDE_FROM_ALL)
+        set(FMT_LIBRARIES fmt::fmt-header-only)
+    endif ()
+else()
+    find_package(fmt 8.0.0 REQUIRED)
+    set(FMT_LIBRARIES fmt::fmt)
+endif()
+
+if (NOT USE_SYSTEM_NLOHMANN_JSON)
+    if (NOT TARGET nlohmann_json)
+        add_subdirectory(external/nlohmann_json EXCLUDE_FROM_ALL)
+        set(NLOHMANN_JSON_LIBRARIES nlohmann_json)
+    endif ()
+else()
+    find_package(nlohmann_json 3.10.2 REQUIRED)
+    set(NLOHMANN_JSON_LIBRARIES nlohmann_json::nlohmann_json)
+endif ()
+
+add_subdirectory(external/libwolv)
+
+add_subdirectory(lib)
+add_subdirectory(generators EXCLUDE_FROM_ALL)
+
+if (LIBPL_ENABLE_EXAMPLE)
+    add_subdirectory(example EXCLUDE_FROM_ALL)
+endif ()
+
+if (LIBPL_ENABLE_TESTS)
+    add_subdirectory(tests EXCLUDE_FROM_ALL)
+endif ()
+
+if (LIBPL_ENABLE_CLI)
+    add_subdirectory(cli)
+endif ()
+
+if (LIBPL_ENABLE_FUZZING)
+    add_subdirectory(fuzz EXCLUDE_FROM_ALL)
+endif ()
+
+add_library(pl::libpl ALIAS libpl)

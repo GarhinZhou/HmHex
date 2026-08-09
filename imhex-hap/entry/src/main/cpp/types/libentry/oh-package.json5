@@ -1,0 +1,9 @@
+{
+  "name": "libentry",
+  "version": "1.0.0",
+  "description": "ImHex native entry module types",
+  "main": "Index.d.ts",
+  "author": "AICoding",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

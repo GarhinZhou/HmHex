@@ -1,0 +1,42 @@
+project(libwolv-utils)
+
+# Add library
+add_library(${PROJECT_NAME} STATIC
+        source/utils/string.cpp
+)
+
+add_subdirectory(lib/jthread)
+
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_link_libraries(${PROJECT_NAME} PUBLIC wolv::types jthread)
+set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
+
+string(REPLACE "libwolv-" "" PROJECT_NAME_SPACE ${PROJECT_NAME})
+add_library(wolv::${PROJECT_NAME_SPACE} ALIAS ${PROJECT_NAME})
+
+target_link_libraries(libwolv INTERFACE ${PROJECT_NAME})
+
+
+if (WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+endif()
+
+# Enable the experimental libc++ library features on clang to get access to a properly functioning std::jthread
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+        target_compile_options(${PROJECT_NAME} PUBLIC -fexperimental-library -Wno-c2y-extensions)
+    else ()
+        target_compile_options(${PROJECT_NAME} PUBLIC -fexperimental-library)
+    endif ()
+endif()
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    target_compile_options(${PROJECT_NAME} PRIVATE /EHsc)
+endif()
+
+# Add example project
+if(LIBWOLV_ENABLE_EXAMPLES)
+    add_executable(${PROJECT_NAME}-test EXCLUDE_FROM_ALL example/main.cpp)
+    target_include_directories(${PROJECT_NAME}-test PRIVATE example)
+    target_link_libraries(${PROJECT_NAME}-test PRIVATE ${PROJECT_NAME})
+endif()

@@ -1,0 +1,170 @@
+name: "Build"
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  win:
+    name: 🪟 Windows
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: 🧰 Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 🟦 Install msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          pacboy: >-
+            gcc:p
+            lld:p
+            cmake:p
+            ninja:p
+            ccache:p
+
+      - name: 📜 Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ${{ runner.os }}-build-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-build
+          max-size: 1G
+
+      - name: 🛠️ Build
+        run: |
+          mkdir -p build
+          cd build
+          cmake                                     \
+            -DCMAKE_BUILD_TYPE=Release              \
+            -DCMAKE_INSTALL_PREFIX="$PWD/install"   \
+            -DCMAKE_C_FLAGS="-fuse-ld=lld"          \
+            -DCMAKE_CXX_FLAGS="-fuse-ld=lld"        \
+            -DLIBPL_ENABLE_TESTS=OFF                \
+            -DLIBPL_ENABLE_CLI=ON                   \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache      \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache    \
+            -DCMAKE_INSTALL_PREFIX="./install"      \
+            -G Ninja                                \
+            ..
+          ninja install
+
+      - name: ⬆️ Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plcli Windows
+          path: |
+            build/install/*
+
+  macos:
+    name: 🍎 macOS
+    runs-on: macos-15-intel
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: 🧰 Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: ⬇️ Install dependencies
+        run: |
+          brew install llvm ccache ninja
+
+      - name: 📜 Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ${{ runner.os }}-build-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-build
+          max-size: 1G
+
+      - name: 🛠️ Build
+        run: |
+          mkdir -p build
+          cd build
+          CC=$(brew --prefix llvm)/bin/clang        \
+          CXX=$(brew --prefix llvm)/bin/clang++     \
+          OBJC=$(brew --prefix llvm)/bin/clang      \
+          OBJCXX=$(brew --prefix llvm)/bin/clang++  \
+          cmake                                     \
+            -DCMAKE_BUILD_TYPE=Debug                \
+            -DCMAKE_INSTALL_PREFIX="$PWD/install"   \
+            -DLIBPL_ENABLE_TESTS=OFF                \
+            -DLIBPL_ENABLE_CLI=ON                   \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache      \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache    \
+            -DCMAKE_INSTALL_PREFIX="./install"      \
+            -G Ninja                                \
+            ..
+          ninja install
+
+      - name: ⬆️ Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plcli macOS
+          path: |
+            build/install/*
+
+  linux:
+    name: 🐧 Linux
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: 🧰 Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: ⬇️ Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y       \
+            build-essential       \
+            gcc-14                \
+            g++-14                \
+            lld                   \
+            cmake                 \
+            ninja-build           \
+            ccache
+
+    - name: 📜 Setup ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ runner.os }}-build-${{ github.run_id }}
+        restore-keys: ${{ runner.os }}-build
+        max-size: 1G
+
+    - name: 🛠️ Build
+      run: |
+        mkdir -p build
+        cd build
+        CC=gcc-14 CXX=g++-14 cmake                \
+          -DCMAKE_BUILD_TYPE=Debug                \
+          -DCMAKE_INSTALL_PREFIX="/usr"           \
+          -DCMAKE_C_FLAGS="-fuse-ld=lld"          \
+          -DCMAKE_CXX_FLAGS="-fuse-ld=lld"        \
+          -DLIBPL_ENABLE_TESTS=OFF                \
+          -DLIBPL_ENABLE_CLI=ON                   \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache      \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache    \
+          -DCMAKE_INSTALL_PREFIX="./install"      \
+          -G Ninja                                \
+          ..
+        ninja install
+
+    - name: ⬆️ Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: plcli Linux
+        path: |
+          build/install/*
