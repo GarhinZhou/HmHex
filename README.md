@@ -85,5 +85,6 @@ ImHex-OHOS/
 | jthread | CC-BY-4.0 (`deps/jthread-master/README.md`) |
 
 > 商标/名称：ImHex 名称与图标版权归其原作者；本移植仅为兼容性/可用性目的引用。
+
 > 本项目全程通过 KimiCode + DeepseekV4flash正式版 完成移植，共计消耗1,187,853,807tokens，花费¥32.69CNY
 
