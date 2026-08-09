@@ -1,4 +1,4 @@
-# ImHex for OpenHarmony (OHOS PC)
+# ImHex for HarmonyOS (PC)
 
 ImHex 逆向工程十六进制编辑器移植到 Harmony PC 的完整工程。
 以单个 HAP 应用形式运行：ArkUI `XComponent` 承载由 GLFW 兼容层 + ImGui 驱动的
