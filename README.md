@@ -60,3 +60,29 @@ ImHex-OHOS/
 - 更新走应用商店（`imhex-updater` 不存在，检查更新仅提示）
 - 剪贴板读取受系统签名限制，仅实现写入方向
 - 插件无法动态加载，新插件需加入 `IMHEX_PLUGINS` 静态链接列表
+
+## 许可与法律
+
+本仓库是 **ImHex（WerWolv/ImHex）的非官方移植**，与 ImHex 上游项目及其
+维护者无任何关联。ImHex 及本仓库内的修改（移植代码、HAP 工程、插件）以
+**GPL-2.0-or-later** 许可发布（见仓库根 `LICENSE`，与上游 ImHex 的
+`ImHex-1.38.1/LICENSE` 一致）。将本仓库公开托管即满足 GPL 的源代码提供义务。
+
+自有的三个子项目（`ohos-port/`、`imhex-hap/`、`imhex-decompiler-plugin/`）
+各自目录内均附有同一 `LICENSE` 文件。
+
+第三方依赖（保留各自许可，见对应目录内 LICENSE/COPYING）：
+
+| 组件 | 许可 |
+|---|---|
+| curl | MIT/X11 (`deps/curl-8.21.0/COPYING`) |
+| mbedTLS | Apache-2.0 / GPL-2.0 (`deps/mbedtls-3.6.2/LICENSE`) |
+| FreeType | FTL / GPL-2.0 (`deps/freetype-2.14.3/LICENSE.TXT`) |
+| libssh2 | BSD-3 (`deps/libssh2-1.11.1/COPYING`) |
+| zlib | zlib (`deps/zlib-1.3.1/LICENSE`) |
+| CLI11 | BSD-3 (`deps/CLI11-2.4.2/LICENSE`) |
+| Capstone（`deps/prefix/` 内预编译静态库） | BSD-3 (`deps/prefix/LICENSE.capstone`) |
+| jthread | CC-BY-4.0 (`deps/jthread-master/README.md`) |
+
+> 商标/名称：ImHex 名称与图标版权归其原作者；本移植仅为兼容性/可用性目的引用。
+
