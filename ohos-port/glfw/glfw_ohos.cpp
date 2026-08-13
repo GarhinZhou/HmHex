@@ -1044,13 +1044,47 @@ extern "C" {
 
     // --- Clipboard ---
 
+    // Synchronisation for read-through of the system pasteboard: the render
+    // thread requests an async read on the ArkTS side (ohosRequestClipboardRead)
+    // and waits briefly for the mirrored content to arrive via
+    // glfwOhosSetClipboardCache. The JS thread is never blocked by the wait,
+    // so there is no deadlock.
+    static std::mutex sClipboardReadMutex;
+    static std::condition_variable sClipboardReadCv;
+    static bool sClipboardReadPending = false;
+    static std::chrono::steady_clock::time_point sClipboardLastReadAt{};
+
     // Standard GLFW semantics: the clipboard is process-global and the
     // window argument is ignored (imgui_impl_glfw passes nullptr). Dereferencing
     // the passed pointer would return an offset-into-null address that later
     // strlen()/memcpy() calls crash on.
     GLFWAPI const char *glfwGetClipboardString(GLFWwindow *) {
         auto *window = g().window;
-        return window != nullptr ? window->clipboard : "";
+        if (window == nullptr)
+            return "";
+
+        // Throttle the system-pasteboard refresh to once per second so
+        // repeated queries during a single paste don't stall the render loop.
+        const auto now = std::chrono::steady_clock::now();
+        bool refresh = false;
+        {
+            std::lock_guard lock(sClipboardReadMutex);
+            refresh = now - sClipboardLastReadAt > std::chrono::seconds(1);
+            if (refresh)
+                sClipboardLastReadAt = now;
+        }
+
+        if (refresh) {
+            extern void ohosRequestClipboardRead();
+            std::unique_lock lock(sClipboardReadMutex);
+            sClipboardReadPending = true;
+            ohosRequestClipboardRead();
+            // Wait up to 300 ms for the ArkTS side to mirror the system
+            // clipboard back; on timeout the previous cache is returned.
+            sClipboardReadCv.wait_for(lock, std::chrono::milliseconds(300), [] { return !sClipboardReadPending; });
+        }
+
+        return window->clipboard;
     }
 
     GLFWAPI void glfwSetClipboardString(GLFWwindow *, const char *string) {
@@ -1068,13 +1102,21 @@ extern "C" {
     }
 
     // Updates the in-process clipboard from the system clipboard. Called by
-    // the ArkTS side when it observes a pasteboard change.
+    // the ArkTS side when it observes a pasteboard change or answers a
+    // read-through request.
     void glfwOhosSetClipboardCache(const char *text) {
         auto *window = g().window;
         if (window == nullptr || text == nullptr)
             return;
         std::strncpy(window->clipboard, text, sizeof(window->clipboard) - 1);
         window->clipboard[sizeof(window->clipboard) - 1] = '\0';
+
+        // Wake up a glfwGetClipboardString read-through wait, if any.
+        {
+            std::lock_guard lock(sClipboardReadMutex);
+            sClipboardReadPending = false;
+            sClipboardReadCv.notify_all();
+        }
     }
 
     // Clears all key/mouse button state and drops queued key/mouse events.

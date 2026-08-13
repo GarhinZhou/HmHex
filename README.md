@@ -60,8 +60,8 @@ HmHex/
 ## 已知限制
 
 - 更新走应用商店（`imhex-updater` 不存在，检查更新仅提示）
-- 剪贴板读取受系统签名限制，仅实现写入方向
-- 插件无法动态加载，新插件需加入 `IMHEX_PLUGINS` 静态链接列表
+- **剪贴板读取（Ctrl+V 粘贴）需要对应 ACL 权限的签名 Profile 才能运行**：`ohos.permission.READ_PASTEBOARD` 是受限权限（system_basic），必须在 AGC 上申请 ACL 权限并下载包含该权限的 Profile（手动签名）打包；使用无 ACL 的自动签名 Profile 安装会失败（`bm install` 报 9568289），或运行时读取被拒。无该权限时仅写入方向可用
+- 插件无法动态加载（鸿蒙 NEXT 的 XPM 签名校验拒绝加载应用沙箱内的未签名 `.so`，`ALLOW_EXTERNAL_NATIVE_CODE` 不豁免），新插件需加入 `IMHEX_PLUGINS` 静态链接列表
 
 ## 许可与法律
 

@@ -844,6 +844,48 @@ namespace {
         napi_call_threadsafe_function(sClipboardTsfn, sClipboardPending, napi_tsfn_nonblocking);
     }
 
+    // --- Clipboard read-through (READ_PASTEBOARD) --------------------------
+    // glfwGetClipboardString asks the ArkTS side for the current system
+    // pasteboard content; ArkTS reads it asynchronously and mirrors it back
+    // via updateClipboardCache -> glfwOhosSetClipboardCache.
+
+    static napi_threadsafe_function sClipboardReadTsfn = nullptr;
+
+    napi_value NapiSetClipboardReadCallback(napi_env env, napi_callback_info info) {
+        size_t argc = 1;
+        napi_value args[1] = { nullptr };
+        napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+        if (argc < 1)
+            return nullptr;
+
+        if (sClipboardReadTsfn != nullptr) {
+            napi_release_threadsafe_function(sClipboardReadTsfn, napi_tsfn_release);
+            sClipboardReadTsfn = nullptr;
+        }
+
+        napi_value resourceName = nullptr;
+        napi_create_string_utf8(env, "clipboardReadCallback", NAPI_AUTO_LENGTH, &resourceName);
+        napi_status status = napi_create_threadsafe_function(
+            env, args[0], nullptr, resourceName, 0, 1, nullptr, nullptr, nullptr,
+            [](napi_env env, napi_value jsCallback, void *, void *) {
+                napi_value global = nullptr;
+                napi_get_global(env, &global);
+                napi_value result = nullptr;
+                napi_call_function(env, global, jsCallback, 0, nullptr, &result);
+            },
+            &sClipboardReadTsfn);
+        OHOS_LOGE("setClipboardReadCallback: status=%d", (int)status);
+        return nullptr;
+    }
+
+    // Called from glfwGetClipboardString (render thread): kick off an async
+    // pasteboard read on the ArkTS side. The caller waits on its own side.
+    extern "C" void ohosRequestClipboardRead() {
+        if (sClipboardReadTsfn == nullptr)
+            return;
+        napi_call_threadsafe_function(sClipboardReadTsfn, nullptr, napi_tsfn_nonblocking);
+    }
+
     napi_value NapiUpdateClipboardCache(napi_env env, napi_callback_info info) {
         size_t argc = 1;
         napi_value args[1] = { nullptr };
@@ -1093,6 +1135,7 @@ namespace {
             { "setSaveFileCallback", nullptr, NapiSetSaveFileCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "saveToFd",   nullptr, NapiSaveToFd,   nullptr, nullptr, nullptr, napi_default, nullptr },
             { "setClipboardCallback", nullptr, NapiSetClipboardCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
+            { "setClipboardReadCallback", nullptr, NapiSetClipboardReadCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "updateClipboardCache", nullptr, NapiUpdateClipboardCache, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "resetKeys",  nullptr, NapiResetKeys,  nullptr, nullptr, nullptr, napi_default, nullptr },
             { "setTopmostCallback", nullptr, NapiSetTopmostCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
@@ -1103,7 +1146,7 @@ namespace {
             { "unlockFrameRate", nullptr, NapiUnlockFrameRate, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "openFileDropped", nullptr, NapiOpenFileDropped, nullptr, nullptr, nullptr, napi_default, nullptr },
         };
-        napi_define_properties(env, exports, 19, desc);
+        napi_define_properties(env, exports, 20, desc);
         return exports;
     }
 

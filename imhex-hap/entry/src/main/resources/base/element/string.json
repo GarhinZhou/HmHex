@@ -2,6 +2,7 @@
   "string": [
     { "name": "module_desc", "value": "HmHex Hex Editor (OpenHarmony port)" },
     { "name": "EntryAbility_desc", "value": "HmHex Hex Editor" },
-    { "name": "EntryAbility_label", "value": "HmHex" }
+    { "name": "EntryAbility_label", "value": "HmHex" },
+    { "name": "reason_read_pasteboard", "value": "用于粘贴从其他应用复制的内容" }
   ]
 }

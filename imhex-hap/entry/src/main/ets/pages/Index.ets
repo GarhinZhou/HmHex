@@ -1,4 +1,4 @@
-import { common, Want } from '@kit.AbilityKit';
+import { common, Want, abilityAccessCtrl } from '@kit.AbilityKit';
 import { unifiedDataChannel } from '@kit.ArkData';
 import { pointer } from '@kit.InputKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
@@ -24,7 +24,7 @@ struct Index {
    * rawfile resources change so devices re-deploy them on next launch;
    * otherwise the deploy is skipped and startup stays fast.
    */
-  private static readonly RESOURCE_VERSION: string = 'v1';
+  private static readonly RESOURCE_VERSION: string = 'v2';
 
   private deployedFileCount: number = 0;
 
@@ -375,15 +375,14 @@ struct Index {
   }
 
   /**
-   * Bridges ImHex's internal clipboard to the system pasteboard (write
-   * direction): native writes are forwarded here and stored into the system
-   * pasteboard, so Ctrl+C puts ImHex content into the OS clipboard.
-   *
-   * Reading the system pasteboard back (so Ctrl+V pastes content copied in
-   * other apps) requires ohos.permission.READ_PASTEBOARD. That permission is
-   * system_basic level; the auto-signed debug profile (APL normal, empty
-   * ACL) cannot declare it — bm install fails with 9568289. It can only be
-   * enabled with an AGC-signed release profile that grants the permission.
+   * Bridges ImHex's internal clipboard to the system pasteboard:
+   * - write direction: native writes are forwarded here and stored into the
+   *   system pasteboard, so Ctrl+C puts ImHex content into the OS clipboard.
+   * - read direction: glfwGetClipboardString asks for the current system
+   *   pasteboard content; this callback reads it and mirrors it back into
+   *   the native cache, so Ctrl+V pastes content copied in other apps.
+   *   Requires ohos.permission.READ_PASTEBOARD (ACL, granted via the
+   *   AGC-signed profile; requested at startup below).
    */
   private setupClipboardBridge(): void {
     try {
@@ -401,7 +400,26 @@ struct Index {
         }
       });
 
-      hilog.info(LOG_DOMAIN, TAG, 'clipboard bridge ready (write-only)');
+      // Read-through: invoked from glfwGetClipboardString on the render
+      // thread. Read the system pasteboard asynchronously and push the text
+      // back via updateClipboardCache.
+      nativeModule.setClipboardReadCallback(() => {
+        systemPasteboard.getData().then((pasteData: pasteboard.PasteData) => {
+          const record = pasteData.getRecordAt(0);
+          if (record === undefined) {
+            return;
+          }
+          const text: string = record.toPlainText();
+          if (text.length > 0) {
+            nativeModule.updateClipboardCache(text);
+          }
+          hilog.error(LOG_DOMAIN, TAG, 'clipboard read: %{public}s', text.substring(0, 64));
+        }).catch((err: BusinessError) => {
+          hilog.error(LOG_DOMAIN, TAG, 'clipboard getData failed: %{public}s', JSON.stringify(err));
+        });
+      });
+
+      hilog.info(LOG_DOMAIN, TAG, 'clipboard bridge ready (read+write)');
     } catch (e) {
       hilog.error(LOG_DOMAIN, TAG, 'clipboard bridge failed: %{public}s', JSON.stringify(e));
     }
@@ -459,6 +477,20 @@ struct Index {
             hilog.error(LOG_DOMAIN, TAG, 'setTopmostCallback failed: %{public}s', JSON.stringify(e));
           }
           this.setupClipboardBridge();
+          // Request the ACL clipboard-read permission. On PC/2in1 the first
+          // request is granted silently by default (Settings > Privacy).
+          try {
+            const context = getContext(this) as common.UIAbilityContext;
+            const atManager = abilityAccessCtrl.createAtManager();
+            atManager.requestPermissionsFromUser(context, ['ohos.permission.READ_PASTEBOARD'])
+              .then((result) => {
+                hilog.error(LOG_DOMAIN, TAG, 'READ_PASTEBOARD request result: %{public}s', JSON.stringify(result));
+              }).catch((err: BusinessError) => {
+                hilog.error(LOG_DOMAIN, TAG, 'READ_PASTEBOARD request failed: %{public}s', JSON.stringify(err));
+              });
+          } catch (e) {
+            hilog.error(LOG_DOMAIN, TAG, 'READ_PASTEBOARD request threw: %{public}s', JSON.stringify(e));
+          }
           // ImHex finished shutting down (File -> Exit ImHex): terminate the
           // ability so the app actually exits instead of freezing.
           try {
