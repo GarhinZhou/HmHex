@@ -8,7 +8,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { window, display } from '@kit.ArkUI';
 import nativeModule from 'libentry.so';
 
-const TAG = 'ImHex';
+const TAG = 'HmHex';
 const LOG_DOMAIN = 0xD002D00;
 
 hilog.info(LOG_DOMAIN, TAG, 'module loaded, nativeModule=%{public}s',

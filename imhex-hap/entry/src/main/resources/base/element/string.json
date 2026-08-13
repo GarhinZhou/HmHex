@@ -1,7 +1,7 @@
 {
   "string": [
-    { "name": "module_desc", "value": "ImHex Hex Editor (OpenHarmony port)" },
-    { "name": "EntryAbility_desc", "value": "ImHex Hex Editor" },
-    { "name": "EntryAbility_label", "value": "ImHex" }
+    { "name": "module_desc", "value": "HmHex Hex Editor (OpenHarmony port)" },
+    { "name": "EntryAbility_desc", "value": "HmHex Hex Editor" },
+    { "name": "EntryAbility_label", "value": "HmHex" }
   ]
 }

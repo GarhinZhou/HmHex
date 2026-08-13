@@ -146,7 +146,7 @@ struct GLFWwindow {
     bool mouseTransparent = false;
     bool maximized = false;
     float opacity = 1.0f;
-    std::string title = "ImHex";
+    std::string title = "HmHex";
     int posX = 0, posY = 0;
     int width = 1280, height = 800;
     int fbWidth = 1280, fbHeight = 800;

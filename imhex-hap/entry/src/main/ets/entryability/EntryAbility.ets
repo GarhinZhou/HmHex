@@ -4,20 +4,20 @@ import { window } from '@kit.ArkUI';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    hilog.info(0x0000, 'ImHex', 'Ability onCreate');
+    hilog.info(0x0000, 'HmHex', 'Ability onCreate');
   }
 
   onDestroy(): void {
-    hilog.info(0x0000, 'ImHex', 'Ability onDestroy');
+    hilog.info(0x0000, 'HmHex', 'Ability onDestroy');
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
-        hilog.error(0x0000, 'ImHex', 'Failed to load content: %{public}s', JSON.stringify(err));
+        hilog.error(0x0000, 'HmHex', 'Failed to load content: %{public}s', JSON.stringify(err));
         return;
       }
-      hilog.info(0x0000, 'ImHex', 'Content loaded');
+      hilog.info(0x0000, 'HmHex', 'Content loaded');
       this.setupWindow(windowStage);
     });
   }
@@ -50,21 +50,21 @@ export default class EntryAbility extends UIAbility {
       // Note: always-on-top is NOT forced here anymore; the persisted
       // ImHex setting (Settings -> General -> Always on top) is re-applied
       // after startup via setTopmostCallback.
-      hilog.info(0x0000, 'ImHex', 'immersive window configured');
+      hilog.info(0x0000, 'HmHex', 'immersive window configured');
     } catch (e) {
-      hilog.error(0x0000, 'ImHex', 'window setup failed: %{public}s', JSON.stringify(e));
+      hilog.error(0x0000, 'HmHex', 'window setup failed: %{public}s', JSON.stringify(e));
     }
   }
 
   onWindowStageDestroy(): void {
-    hilog.info(0x0000, 'ImHex', 'Window stage destroyed');
+    hilog.info(0x0000, 'HmHex', 'Window stage destroyed');
   }
 
   onForeground(): void {
-    hilog.info(0x0000, 'ImHex', 'Ability foreground');
+    hilog.info(0x0000, 'HmHex', 'Ability foreground');
   }
 
   onBackground(): void {
-    hilog.info(0x0000, 'ImHex', 'Ability background');
+    hilog.info(0x0000, 'HmHex', 'Ability background');
   }
 }

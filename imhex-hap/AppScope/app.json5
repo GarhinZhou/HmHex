@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "net.werwolv.imhex",
+    "bundleName": "com.garhin.hmhex",
     "vendor": "AICoding",
     "versionCode": 1000000,
     "versionName": "1.38.1",
