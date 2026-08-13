@@ -1,14 +1,16 @@
-# ImHex for HarmonyOS (PC)
+# HmHex
 
 ImHex 逆向工程十六进制编辑器移植到 Harmony PC 的完整工程。
 以单个 HAP 应用形式运行：ArkUI `XComponent` 承载由 GLFW 兼容层 + ImGui 驱动的
 完整 ImHex GUI（含 9 个内置插件静态链接），通过 NAPI 桥接文件选择、保存、
 剪贴板、置顶、拖放导入等系统能力。
 
+> 本仓库是 ImHex（WerWolv/ImHex）的 OpenHarmony 移植，应用包名 `com.hmhex.app`。
+
 ## 仓库结构
 
 ```
-ImHex-OHOS/
+HmHex/
 ├── imhex-hap/                  # DevEco Studio 工程（entry 模块 = 全部 native 代码）
 ├── ImHex-1.38.1/               # ImHex 上游源码（v1.38.1，含 OHOS 移植修改）
 ├── ohos-port/                  # 移植层：glfw_ohos (EGL/GLES3/NativeWindow)、
