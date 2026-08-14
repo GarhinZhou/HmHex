@@ -38,6 +38,12 @@
 
 #include <content/recent.hpp>
 
+#if defined(IMHEX_OHOS_PORT)
+// Provided by the OHOS entry layer: last known system dark/light state.
+// Declared at namespace scope because extern "C" is not allowed in a block.
+extern "C" bool ohosGetLastSystemTheme(bool &dark);
+#endif
+
 #include <string>
 #include <random>
 #include <banners/banner_button.hpp>
@@ -648,6 +654,15 @@ namespace hex::plugin::builtin {
                     RequestChangeTheme::post(theme);
                     lastTheme = theme;
                 }
+            } else {
+                // Switching back to "Native": no system configuration change
+                // fires here, so re-apply the last known system theme state
+                // (provided by the OHOS entry layer).
+                #if defined(IMHEX_OHOS_PORT)
+                    bool dark = false;
+                    if (ohosGetLastSystemTheme(dark))
+                        RequestChangeTheme::post(dark ? "Dark" : "Light");
+                #endif
             }
         });
         ContentRegistry::Settings::onChange("hex.builtin.setting.interface", "hex.builtin.setting.interface.simplified_welcome_screen", [](const ContentRegistry::Settings::SettingsValue &value) {
@@ -831,22 +846,9 @@ namespace hex::plugin::builtin {
             TaskManager::doLater([]{
                 AchievementManager::unlockAchievement("hex.builtin.achievement.starting_out", "hex.builtin.achievement.starting_out.crash.name");
             });
-        } else {
-            std::random_device rd;
-            if (ImHexApi::System::isCorporateEnvironment()) {
-                if (rd() % 25 == 0) {
-                    ui::BannerButton::open(ICON_VS_HEART, "Using ImHex for professional work? Ask your boss to sponsor us and get private E-Mail support and more!", ImColor(0x68, 0xA7, 0x70), "Donate Now!", [] {
-                        hex::openWebpage("https://imhex.werwolv.net/donate_work");
-                    });
-                }
-            } else {
-                if (rd() % 75 == 0) {
-                    ui::BannerButton::open(ICON_VS_HEART, "ImHex needs your help to stay alive! Donate now to fund infrastructure and further development", ImColor(0x68, 0xA7, 0x70), "Donate Now!", [] {
-                        hex::openWebpage("https://github.com/sponsors/WerWolv");
-                    });
-                }
-            }
         }
+        // The random donation banner (BannerButton) has been removed on the
+        // OHOS port.
 
         // Load info banner texture either locally or from the server
         TaskManager::doLater([] {

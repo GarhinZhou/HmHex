@@ -1,4 +1,4 @@
-import { common, Want, abilityAccessCtrl } from '@kit.AbilityKit';
+import { common, Want, abilityAccessCtrl, ConfigurationConstant } from '@kit.AbilityKit';
 import { unifiedDataChannel } from '@kit.ArkData';
 import { pointer } from '@kit.InputKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
@@ -215,6 +215,28 @@ struct Index {
       hilog.info(LOG_DOMAIN, TAG, 'densityDPI: %{public}d', densityDpi);
       nativeModule.startImHex(surfaceId, filesDir, densityDpi);
       hilog.info(LOG_DOMAIN, TAG, 'startImHex() returned');
+      // "Open with HmHex" — two paths:
+      // 1. Running instance: EntryAbility emits on the shared event hub.
+      // 2. Cold start: the uri was stashed in AppStorage (consumed below).
+      try {
+        const ctx = getContext(this) as common.UIAbilityContext;
+        ctx.eventHub.on('hmhex_open_file', (uri: string) => {
+          hilog.error(LOG_DOMAIN, TAG, 'open-with (running): %{public}s', uri);
+          this.importFiles([uri], true);
+        });
+      } catch (e) {
+        hilog.error(LOG_DOMAIN, TAG, 'open-with eventHub subscribe failed: %{public}s', JSON.stringify(e));
+      }
+      try {
+        const pendingUri: string | undefined = AppStorage.get<string>('pendingOpenFileUri');
+        if (pendingUri !== undefined && pendingUri.length > 0) {
+          AppStorage.setOrCreate('pendingOpenFileUri', '');
+          hilog.error(LOG_DOMAIN, TAG, 'open-with (cold start): %{public}s', pendingUri);
+          this.importFiles([pendingUri], true);
+        }
+      } catch (e) {
+        hilog.error(LOG_DOMAIN, TAG, 'open-with handling failed: %{public}s', JSON.stringify(e));
+      }
     } catch (e) {
       hilog.error(LOG_DOMAIN, TAG, 'startImHex() threw: %{public}s', JSON.stringify(e));
     }
@@ -384,6 +406,30 @@ struct Index {
    *   Requires ohos.permission.READ_PASTEBOARD (ACL, granted via the
    *   AGC-signed profile; requested at startup below).
    */
+  /**
+   * Polls the system dark/light mode every 2 seconds and forwards changes to
+   * the native side. onConfigurationUpdate does not fire reliably for
+   * colorMode changes on this SDK, so polling is the dependable fallback.
+   */
+  private startThemePolling(): void {
+    const context = getContext(this) as common.UIAbilityContext;
+    let lastCm = -2;
+    setInterval(() => {
+      try {
+        const cm = context.config.colorMode;
+        if (cm !== undefined && cm !== lastCm) {
+          lastCm = cm;
+          if (cm === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ||
+              cm === ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT) {
+            nativeModule.notifySystemTheme(cm === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ? 1 : 0);
+          }
+        }
+      } catch (e) {
+        // Ignore transient errors; the next tick retries.
+      }
+    }, 2000);
+  }
+
   private setupClipboardBridge(): void {
     try {
       const systemPasteboard = pasteboard.getSystemPasteboard();
@@ -477,6 +523,30 @@ struct Index {
             hilog.error(LOG_DOMAIN, TAG, 'setTopmostCallback failed: %{public}s', JSON.stringify(e));
           }
           this.setupClipboardBridge();
+          this.startThemePolling();
+          // Initial system dark/light mode: the native side applies it only
+          // when the "Native" theme is selected. Send immediately AND again
+          // after ImHex finished initializing — the first notification may
+          // arrive before the plugin registered the RequestChangeTheme
+          // subscriber, in which case the event is dropped.
+          try {
+            const context = getContext(this) as common.UIAbilityContext;
+            const cm = context.config.colorMode;
+            if (cm === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ||
+                cm === ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT) {
+              const dark = cm === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ? 1 : 0;
+              nativeModule.notifySystemTheme(dark);
+              setTimeout(() => {
+                try {
+                  nativeModule.notifySystemTheme(dark);
+                } catch (e2) {
+                  hilog.error(LOG_DOMAIN, TAG, 'delayed theme notify failed: %{public}s', JSON.stringify(e2));
+                }
+              }, 3000);
+            }
+          } catch (e) {
+            hilog.error(LOG_DOMAIN, TAG, 'initial theme notify failed: %{public}s', JSON.stringify(e));
+          }
           // Request the ACL clipboard-read permission. On PC/2in1 the first
           // request is granted silently by default (Settings > Privacy).
           try {

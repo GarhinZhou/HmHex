@@ -99,6 +99,15 @@ namespace ImGuiExt {
             // Create a regular texture from the RGBA8 array
             GLuint texture = createTextureFromRGBA8Array(buffer, width, height, filter);
 
+            #if defined(IMHEX_OHOS_PORT)
+                // OHOS GLES: a GL_TEXTURE_2D_MULTISAMPLE texture cannot be
+                // sampled with ImGui's regular sampler2D texture() — the
+                // result is undefined (renders black). Reloading a texture
+                // (e.g. theme switch) would then show a black rectangle.
+                // Always use the regular texture on OHOS.
+                return texture;
+            #endif
+
             if (filter == Texture::Filter::Nearest) {
                 return texture;
             }

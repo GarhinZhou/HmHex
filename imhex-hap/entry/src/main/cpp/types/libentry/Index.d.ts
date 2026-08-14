@@ -9,7 +9,9 @@ declare const nativeModule: {
   setSaveFileCallback(callback: () => void): void;
   saveToFd(fd: number): void;
   setClipboardCallback(callback: (text: string) => void): void;
+  setClipboardReadCallback(callback: () => void): void;
   updateClipboardCache(text: string): void;
+  notifySystemTheme(dark: number): void;
   resetKeys(): void;
   setTopmostCallback(callback: (topmost: number) => void): void;
   setTitleButtonWidth(width: number): void;

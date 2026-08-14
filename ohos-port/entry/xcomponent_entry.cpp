@@ -15,6 +15,10 @@
 #include <hex/api/imhex_api/provider.hpp>
 #include <hex/api/imhex_api/system.hpp>
 #include <hex/api/events/requests_interaction.hpp>
+#include <hex/api/events/events_lifecycle.hpp>
+#include <hex/api/events/requests_gui.hpp>
+#include <hex/api/theme_manager.hpp>
+#include <hex/api/content_registry/settings.hpp>
 
 #include <xdg.hpp>
 
@@ -26,6 +30,7 @@
 #include <cstdlib>
 #include <dlfcn.h>
 #include <filesystem>
+#include <mutex>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -37,6 +42,13 @@
 // use LOG_ERROR so diagnostic messages are actually visible.
 #define OHOS_LOG(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, OHOS_LOG_TAG, __VA_ARGS__)
 #define OHOS_LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, OHOS_LOG_TAG, __VA_ARGS__)
+
+// Deferred file opens: files requested before ImHex finished initializing
+// (e.g. "Open with HmHex" on a cold start) are queued here and flushed on
+// EventImHexStartupFinished, when the RequestOpenFile subscribers exist.
+static bool sImHexStarted = false;
+static std::mutex sPendingOpenMutex;
+static std::vector<std::fs::path> sPendingOpens;
 
 // GLFW layer (glfw_ohos.cpp)
 extern "C" {
@@ -357,6 +369,24 @@ namespace {
     }
 
     napi_value NapiStartImHex(napi_env env, napi_callback_info info) {
+        // Deferred file opens: RequestOpenFile subscribers (the builtin
+        // plugin) only exist after ImHex finished initializing; a file opened
+        // via "Open with HmHex" during a cold start would otherwise be
+        // dropped. Queue it here and flush on EventImHexStartupFinished.
+        {
+            static bool subscribed = false;
+            if (!subscribed) {
+                subscribed = true;
+                hex::EventImHexStartupFinished::subscribe([] {
+                    std::lock_guard lock(sPendingOpenMutex);
+                    sImHexStarted = true;
+                    for (auto &path : sPendingOpens)
+                        hex::RequestOpenFile::post(path);
+                    sPendingOpens.clear();
+                });
+            }
+        }
+
         size_t argc = 3;
         napi_value args[3] = { nullptr };
         napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
@@ -705,7 +735,11 @@ namespace {
             size_t len = 0;
             napi_get_value_string_utf8(env, args[0], buf, sizeof(buf), &len);
             OHOS_LOGE("openFileDropped: %{public}s", buf);
-            hex::RequestOpenFile::post(std::fs::path(buf));
+            std::lock_guard lock(sPendingOpenMutex);
+            if (sImHexStarted)
+                hex::RequestOpenFile::post(std::fs::path(buf));
+            else
+                sPendingOpens.emplace_back(buf);
         }
         return nullptr;
     }
@@ -940,6 +974,59 @@ namespace {
         return nullptr;
     }
 
+    // --- System theme bridge ---------------------------------------------
+    // The ArkTS side forwards system dark/light mode changes (UIAbility
+    // onConfigurationUpdate); when the "Native" theme is selected, ImHex
+    // follows the system theme like the Windows plugin does.
+    static bool sLastSystemDark = false;
+    static bool sLastSystemDarkValid = false;
+
+    // Called from the builtin plugin when the theme setting switches back to
+    // "Native": re-apply the last known system dark/light state, since no
+    // system configuration change fires at that point.
+    extern "C" bool ohosGetLastSystemTheme(bool &dark) {
+        if (!sLastSystemDarkValid)
+            return false;
+        dark = sLastSystemDark;
+        return true;
+    }
+
+    napi_value NapiNotifySystemTheme(napi_env env, napi_callback_info info) {
+        size_t argc = 1;
+        napi_value args[1] = { nullptr };
+        napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+        if (argc < 1)
+            return nullptr;
+
+        // Accept both a JS boolean and a number (0/1) — ArkTS callers pass a
+        // number, and napi_get_value_bool would fail on it, leaving dark=false.
+        bool dark = false;
+        napi_valuetype type;
+        if (napi_typeof(env, args[0], &type) == napi_ok && type == napi_boolean) {
+            napi_get_value_bool(env, args[0], &dark);
+        } else {
+            int32_t value = 0;
+            if (napi_get_value_int32(env, args[0], &value) == napi_ok)
+                dark = value != 0;
+        }
+        sLastSystemDark = dark;
+        sLastSystemDarkValid = true;
+
+        // RequestChangeTheme synchronously invokes its subscribers, including
+        // welcome_screen's updateTextures which creates GL textures. This NAPI
+        // runs on the JS thread which has no current GL context, so hop over
+        // to the render thread before posting.
+        hex::TaskManager::doLater([dark] {
+            auto theme = hex::ContentRegistry::Settings::read<std::string>(
+                "hex.builtin.setting.interface", "hex.builtin.setting.interface.color",
+                hex::ThemeManager::NativeTheme);
+            if (theme == hex::ThemeManager::NativeTheme)
+                hex::RequestChangeTheme::post(dark ? "Dark" : "Light");
+        });
+
+        return nullptr;
+    }
+
     // --- Open webpage bridge -------------------------------------------
     // ImHex's openWebpage() (utils.cpp) notifies the ArkTS side, which opens
     // the URL with the system browser / app picker (openLink).
@@ -1144,9 +1231,10 @@ namespace {
             { "setOpenWebpageCallback", nullptr, NapiSetOpenWebpageCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "setCursorCallback", nullptr, NapiSetCursorCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "unlockFrameRate", nullptr, NapiUnlockFrameRate, nullptr, nullptr, nullptr, napi_default, nullptr },
+            { "notifySystemTheme", nullptr, NapiNotifySystemTheme, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "openFileDropped", nullptr, NapiOpenFileDropped, nullptr, nullptr, nullptr, napi_default, nullptr },
         };
-        napi_define_properties(env, exports, 20, desc);
+        napi_define_properties(env, exports, 21, desc);
         return exports;
     }
 
