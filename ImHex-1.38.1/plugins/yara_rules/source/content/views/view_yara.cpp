@@ -338,12 +338,11 @@ namespace hex::plugin::yara {
     }
 
     void ViewYara::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view allows you to apply YARA rules to the currently opened file and highlights matched regions.");
+        ImGuiExt::TextFormattedWrapped("该视图允许你对当前打开的文件应用 YARA 规则，并高亮显示匹配的区域。");
         ImGui::NewLine();
         ImGuiExt::TextFormattedWrapped(
-            "You can add YARA rules by clicking the + button in the top right corner of the view. "
-            "This will open a file chooser where you can select one or more YARA files to add."
-            "For further information on how to write YARA rules, please refer to its official documentation."
+            "你可以通过点击视图右上角的 + 按钮添加 YARA 规则，此时会打开文件选择器，让你选择一个或多个 YARA 文件。"
+            "关于如何编写 YARA 规则的更多信息，请参考其官方文档。"
         );
     }
 }

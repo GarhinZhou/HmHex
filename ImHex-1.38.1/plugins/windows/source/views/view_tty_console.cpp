@@ -460,8 +460,8 @@ namespace hex::plugin::windows {
     }
 
     void ViewTTYConsole::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view can send and receive data over a Serial (TTY) port.");
+        ImGuiExt::TextFormattedWrapped("该视图可以通过串口（TTY）发送和接收数据。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("Connect your device to a Serial Port (or a USB port with a Serial adapter) and configure the connection settings on the left side. Once connected, you can send and receive data using the console below.");
+        ImGuiExt::TextFormattedWrapped("将你的设备连接到串口（或带有串口适配器的 USB 端口），并在左侧配置连接参数。连接成功后，你可以使用下方的控制台发送和接收数据。");
     }
 }

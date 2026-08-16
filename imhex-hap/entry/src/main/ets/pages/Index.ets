@@ -5,10 +5,53 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { window, display } from '@kit.ArkUI';
+import { window, display, promptAction } from '@kit.ArkUI';
+import { i18n } from '@kit.LocalizationKit';
+import { notificationManager } from '@kit.NotificationKit';
 import nativeModule from 'libentry.so';
 
 const TAG = 'HmHex';
+
+/**
+ * In-app explanation shown before the system notification permission dialog.
+ * Custom dialog (not AlertDialog) so the two buttons have no divider line.
+ */
+@CustomDialog
+struct NotificationExplainDialog {
+  controller: CustomDialogController;
+  onConfirm: () => void = () => {};
+  onDecline: () => void = () => {};
+
+  build() {
+    Column({ space: 16 }) {
+      Text('允许通知')
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+      Text('HmHex 会在后台任务完成时（例如大文件加载、模式分析、哈希计算）发送通知提醒您。点击"确定"后，系统将询问是否允许接收通知；选择"不需要通知"则不再询问。')
+        .fontSize(14)
+        .lineHeight(20)
+        .textAlign(TextAlign.Center)
+      Row({ space: 12 }) {
+        Button('不需要通知')
+          .layoutWeight(1)
+          .buttonStyle(ButtonStyleMode.NORMAL)
+          .onClick(() => {
+            this.controller.close();
+            this.onDecline();
+          })
+        Button('确定')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.controller.close();
+            this.onConfirm();
+          })
+      }
+      .width('100%')
+    }
+    .padding(24)
+    .width('80%')
+  }
+}
 const LOG_DOMAIN = 0xD002D00;
 
 hilog.info(LOG_DOMAIN, TAG, 'module loaded, nativeModule=%{public}s',
@@ -18,6 +61,56 @@ hilog.info(LOG_DOMAIN, TAG, 'module loaded, nativeModule=%{public}s',
 @Component
 struct Index {
   private xcomponentController: XComponentController = new XComponentController();
+  private notifDialogController: CustomDialogController | null = null;
+
+  // Per-launch resource handles, cleaned up in aboutToDisappear so a rebuild
+  // of this page in the same process never stacks duplicate timers/listeners.
+  private themePollingId: number = -1;
+  private taskPollingId: number = -1;
+  private mainWindow: window.Window | null = null;
+  private onOpenFileHandler = (uri: string): void => {
+    hilog.error(LOG_DOMAIN, TAG, 'open-with (running): %{public}s', uri);
+    this.importFiles([uri], true);
+  };
+  private onTitleRectHandler = (rect: window.TitleButtonRect): void => {
+    hilog.error(LOG_DOMAIN, TAG, 'title button rect: %{public}s', JSON.stringify(rect));
+    nativeModule.setTitleButtonWidth(rect.width);
+  };
+
+  aboutToDisappear(): void {
+    // Page/ability teardown: release everything that was registered in
+    // startNative(), so a same-process rebuild starts from a clean slate.
+    try {
+      if (this.themePollingId >= 0) {
+        clearInterval(this.themePollingId);
+        this.themePollingId = -1;
+      }
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, TAG, 'clear theme polling failed: %{public}s', JSON.stringify(e));
+    }
+    try {
+      if (this.taskPollingId >= 0) {
+        clearInterval(this.taskPollingId);
+        this.taskPollingId = -1;
+      }
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, TAG, 'clear task polling failed: %{public}s', JSON.stringify(e));
+    }
+    try {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      ctx.eventHub.off('hmhex_open_file', this.onOpenFileHandler);
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, TAG, 'eventHub off failed: %{public}s', JSON.stringify(e));
+    }
+    try {
+      if (this.mainWindow !== null) {
+        this.mainWindow.off('windowTitleButtonRectChange', this.onTitleRectHandler);
+        this.mainWindow = null;
+      }
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, TAG, 'window off failed: %{public}s', JSON.stringify(e));
+    }
+  }
 
   /**
    * Version tag of the bundled ImHex resources. Bump this whenever the
@@ -213,6 +306,14 @@ struct Index {
         hilog.error(LOG_DOMAIN, TAG, 'getDefaultDisplaySync failed: %{public}s', JSON.stringify(e));
       }
       hilog.info(LOG_DOMAIN, TAG, 'densityDPI: %{public}d', densityDpi);
+      // Forward the system language before ImHex initializes so the UI
+      // follows the system language (zh-CN etc.) when no explicit language
+      // setting is stored.
+      try {
+        nativeModule.setSystemLanguage(i18n.getSystemLanguage());
+      } catch (e) {
+        hilog.error(LOG_DOMAIN, TAG, 'setSystemLanguage failed: %{public}s', JSON.stringify(e));
+      }
       nativeModule.startImHex(surfaceId, filesDir, densityDpi);
       hilog.info(LOG_DOMAIN, TAG, 'startImHex() returned');
       // "Open with HmHex" — two paths:
@@ -220,10 +321,7 @@ struct Index {
       // 2. Cold start: the uri was stashed in AppStorage (consumed below).
       try {
         const ctx = getContext(this) as common.UIAbilityContext;
-        ctx.eventHub.on('hmhex_open_file', (uri: string) => {
-          hilog.error(LOG_DOMAIN, TAG, 'open-with (running): %{public}s', uri);
-          this.importFiles([uri], true);
-        });
+        ctx.eventHub.on('hmhex_open_file', this.onOpenFileHandler);
       } catch (e) {
         hilog.error(LOG_DOMAIN, TAG, 'open-with eventHub subscribe failed: %{public}s', JSON.stringify(e));
       }
@@ -276,6 +374,12 @@ struct Index {
     documentPicker.select(options).then((uris: string[]) => {
       if (uris.length === 0) {
         hilog.info(LOG_DOMAIN, TAG, 'picker: no files selected');
+        // Drop any pending dialog callback so it can never fire later.
+        try {
+          nativeModule.cancelFileDialog();
+        } catch (e) {
+          hilog.error(LOG_DOMAIN, TAG, 'cancelFileDialog failed: %{public}s', JSON.stringify(e));
+        }
         return;
       }
       this.importFiles(uris);
@@ -298,9 +402,22 @@ struct Index {
     this.mkdirs(destDir);
     const bufSize = 1024 * 1024;
     for (const uri of uris) {
+      if (uri === undefined || uri.length === 0) {
+        hilog.error(LOG_DOMAIN, TAG, 'import: empty uri skipped');
+        continue;
+      }
       try {
         const src = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
-        const name: string = src.name && src.name.length > 0 ? src.name : ('file_' + Date.now());
+        let name: string = src.name && src.name.length > 0 ? src.name : ('file_' + Date.now());
+        // Media URIs (file://media/...) can yield names that are not plain
+        // basenames; strip any directory part so the dest path stays sane.
+        const slash: number = name.lastIndexOf('/');
+        if (slash >= 0) {
+          name = name.substring(slash + 1);
+        }
+        if (name.length === 0) {
+          name = 'file_' + Date.now();
+        }
         const dest: string = destDir + '/' + name;
         const out = fileIo.openSync(dest,
           fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
@@ -350,11 +467,90 @@ struct Index {
       const records = data.getRecords();
       const uris: string[] = [];
       for (const record of records) {
+        let recordType = 'unknown';
+        try {
+          recordType = record.getType();
+        } catch (e) {
+          hilog.error(LOG_DOMAIN, TAG, 'drop: getType threw: %{public}s', JSON.stringify(e));
+        }
         if (record instanceof unifiedDataChannel.File) {
-          uris.push(record.uri);
-          hilog.error(LOG_DOMAIN, TAG, 'drop: file uri=%{public}s', record.uri);
+          // Image/Video extend File; media records may carry no uri (pure
+          // pixel data) — those cannot be imported, log and skip them.
+          let uri = '';
+          try {
+            uri = record.uri;
+          } catch (e) {
+            hilog.error(LOG_DOMAIN, TAG, 'drop: uri getter threw: %{public}s', JSON.stringify(e));
+          }
+          if (uri !== undefined && uri.length > 0) {
+            uris.push(uri);
+            hilog.error(LOG_DOMAIN, TAG, 'drop: file uri=%{public}s type=%{public}s', uri, recordType);
+          } else {
+            hilog.error(LOG_DOMAIN, TAG, 'drop: file record without uri ignored, type=%{public}s', recordType);
+          }
+        } else if (record instanceof unifiedDataChannel.SystemDefinedRecord) {
+          // Files dragged from the system file manager are often delivered
+          // as system-defined records (e.g. images as SystemDefinedPixelMap)
+          // instead of File; the file reference lives in `details.uri`.
+          let uri = '';
+          try {
+            const details = record.details;
+            if (details !== undefined) {
+              const v = details['uri'];
+              if (typeof v === 'string' && v.length > 0) {
+                uri = v;
+              }
+            }
+          } catch (e) {
+            hilog.error(LOG_DOMAIN, TAG, 'drop: details read threw: %{public}s', JSON.stringify(e));
+          }
+          if (uri.length > 0) {
+            uris.push(uri);
+            hilog.error(LOG_DOMAIN, TAG, 'drop: system record uri=%{public}s type=%{public}s', uri, recordType);
+          } else {
+            hilog.error(LOG_DOMAIN, TAG, 'drop: system record without uri, type=%{public}s details=%{public}s',
+              recordType, JSON.stringify(record.details));
+          }
         } else {
-          hilog.error(LOG_DOMAIN, TAG, 'drop: non-file record ignored');
+          // Folders cannot be imported as providers; tell the user instead
+          // of failing silently.
+          if (recordType.includes('folder') || recordType.includes('directory')) {
+            hilog.error(LOG_DOMAIN, TAG, 'drop: folder dropped, type=%{public}s', recordType);
+            try {
+              promptAction.showToast({ message: '不支持拖入文件夹' });
+            } catch (e) {
+              hilog.error(LOG_DOMAIN, TAG, 'drop: toast failed: %{public}s', JSON.stringify(e));
+            }
+            continue;
+          }
+
+          // Types like general.image / general.video arrive as a base
+          // UnifiedRecord whose value object carries the original file uri
+          // (with drag-drop read permission). Try the known key names so
+          // images, videos and other system records open like any file.
+          let uri = '';
+          try {
+            const value = record.getValue();
+            if (value !== null && value !== undefined && typeof value === 'object') {
+              const obj = value as Record<string, Object | string | number | boolean>;
+              const candidates = ['oriUri', 'uri', 'imageUri', 'videoUri', 'fileUri'];
+              for (const key of candidates) {
+                const v = obj[key];
+                if (typeof v === 'string' && v.length > 0) {
+                  uri = v;
+                  break;
+                }
+              }
+            }
+          } catch (e) {
+            hilog.error(LOG_DOMAIN, TAG, 'drop: value uri extraction threw: %{public}s', JSON.stringify(e));
+          }
+          if (uri.length > 0) {
+            uris.push(uri);
+            hilog.error(LOG_DOMAIN, TAG, 'drop: record uri=%{public}s type=%{public}s', uri, recordType);
+          } else {
+            hilog.error(LOG_DOMAIN, TAG, 'drop: record without extractable uri, type=%{public}s', recordType);
+          }
         }
       }
       if (uris.length > 0) {
@@ -380,6 +576,12 @@ struct Index {
     documentPicker.save(options).then((uris: string[]) => {
       if (uris.length === 0) {
         hilog.info(LOG_DOMAIN, TAG, 'save picker: cancelled');
+        // Drop any pending save callback so it can never fire later.
+        try {
+          nativeModule.cancelFileDialog();
+        } catch (e) {
+          hilog.error(LOG_DOMAIN, TAG, 'cancelFileDialog failed: %{public}s', JSON.stringify(e));
+        }
         return;
       }
       try {
@@ -414,7 +616,7 @@ struct Index {
   private startThemePolling(): void {
     const context = getContext(this) as common.UIAbilityContext;
     let lastCm = -2;
-    setInterval(() => {
+    this.themePollingId = setInterval(() => {
       try {
         const cm = context.config.colorMode;
         if (cm !== undefined && cm !== lastCm) {
@@ -426,6 +628,106 @@ struct Index {
         }
       } catch (e) {
         // Ignore transient errors; the next tick retries.
+      }
+    }, 2000);
+  }
+
+  /**
+   * True once the user chose "no notifications needed" on a previous launch
+   * (persisted via a marker file so the dialog is not shown again).
+   */
+  private notificationDeclined(): boolean {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      return fileIo.accessSync(context.filesDir + '/.notif_declined');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  private markNotificationDeclined(): void {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const f = fileIo.openSync(context.filesDir + '/.notif_declined',
+        fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
+      fileIo.closeSync(f);
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, TAG, 'markNotificationDeclined failed: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  /**
+   * Requests notification permission with an in-app explanation dialog
+   * first (the system permission dialog itself cannot be customized).
+   */
+  private requestNotificationPermission(): void {
+    const context = getContext(this) as common.UIAbilityContext;
+    try {
+      notificationManager.isNotificationEnabled().then((enabled: boolean) => {
+        if (enabled || this.notificationDeclined()) {
+          return;
+        }
+        this.notifDialogController = new CustomDialogController({
+          builder: NotificationExplainDialog({
+            onConfirm: () => {
+              notificationManager.requestEnableNotification(context).catch((err: BusinessError) => {
+                hilog.error(LOG_DOMAIN, TAG, 'requestEnableNotification failed: %{public}s', JSON.stringify(err));
+              });
+            },
+            onDecline: () => {
+              this.markNotificationDeclined();
+            }
+          }),
+          autoCancel: false,
+          alignment: DialogAlignment.Center
+        });
+        this.notifDialogController.open();
+      }).catch((err: BusinessError) => {
+        hilog.error(LOG_DOMAIN, TAG, 'isNotificationEnabled failed: %{public}s', JSON.stringify(err));
+      });
+    } catch (e) {
+      hilog.error(LOG_DOMAIN, TAG, 'requestNotificationPermission threw: %{public}s', JSON.stringify(e));
+    }
+  }
+
+  /**
+   * Polls the number of running ImHex background tasks and posts a system
+   * notification when a task finishes (ImHex has no task-finished event;
+   * getRunningTaskCount is the available signal).
+   */
+  private startTaskNotificationPolling(): void {
+    let wasBusy = false;
+    let hasWorked = false;
+    this.taskPollingId = setInterval(() => {
+      try {
+        const count: number = nativeModule.getRunningTaskCount();
+        const busy = count > 0;
+        if (busy) {
+          hasWorked = true;
+        } else if (wasBusy && hasWorked) {
+          // Transition busy -> idle: a background task just finished.
+          hasWorked = false;
+          try {
+            const request: notificationManager.NotificationRequest = {
+              id: 1,
+              content: {
+                notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+                normal: {
+                  title: 'HmHex 任务完成',
+                  text: '后台任务已完成'
+                }
+              }
+            };
+            notificationManager.publish(request).catch((err: BusinessError) => {
+              hilog.error(LOG_DOMAIN, TAG, 'publish notification failed: %{public}s', JSON.stringify(err));
+            });
+          } catch (e) {
+            hilog.error(LOG_DOMAIN, TAG, 'publish notification threw: %{public}s', JSON.stringify(e));
+          }
+        }
+        wasBusy = busy;
+      } catch (e) {
+        // Ignore transient errors; next tick retries.
       }
     }, 2000);
   }
@@ -524,6 +826,8 @@ struct Index {
           }
           this.setupClipboardBridge();
           this.startThemePolling();
+          this.requestNotificationPermission();
+          this.startTaskNotificationPolling();
           // Initial system dark/light mode: the native side applies it only
           // when the "Native" theme is selected. Send immediately AND again
           // after ImHex finished initializing — the first notification may
@@ -641,10 +945,8 @@ struct Index {
           try {
             const context = getContext(this) as common.UIAbilityContext;
             window.getLastWindow(context).then((win: window.Window) => {
-              win.on('windowTitleButtonRectChange', (rect: window.TitleButtonRect) => {
-                hilog.error(LOG_DOMAIN, TAG, 'title button rect: %{public}s', JSON.stringify(rect));
-                nativeModule.setTitleButtonWidth(rect.width);
-              });
+              this.mainWindow = win;
+              win.on('windowTitleButtonRectChange', this.onTitleRectHandler);
             }).catch((err: BusinessError) => {
               hilog.error(LOG_DOMAIN, TAG, 'getLastWindow for title rect failed: %{public}s', JSON.stringify(err));
             });

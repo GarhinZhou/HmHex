@@ -817,7 +817,9 @@ namespace hex {
         }
 
         std::string getOSName() {
-            #if defined(OS_WINDOWS)
+            #if defined(IMHEX_OHOS_PORT)
+                return "OpenHarmony";
+            #elif defined(OS_WINDOWS)
                 return "Windows";
             #elif defined(OS_LINUX)
                 #if defined(OS_FREEBSD)
@@ -960,6 +962,10 @@ namespace hex {
 
         std::optional<std::string> checkForUpdate() {
             #if defined(OS_WEB)
+                return std::nullopt;
+            #elif defined(IMHEX_OHOS_PORT)
+                // No network updates on OHOS: updates ship via the app store.
+                // Disable all server communication (no GitHub API calls).
                 return std::nullopt;
             #else
                 if (ImHexApi::System::isNightlyBuild()) {

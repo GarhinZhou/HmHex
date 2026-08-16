@@ -26,6 +26,11 @@
     #include <windows.h>
 #endif
 
+#if defined(IMHEX_OHOS_PORT)
+    #include <hex/helpers/fs.hpp>
+    #include <cstdlib>
+#endif
+
 namespace hex::plugin::builtin {
 
     static std::mutex s_openCloseMutex;
@@ -51,7 +56,14 @@ namespace hex::plugin::builtin {
     }
 
     bool FileProvider::isSavable() const {
+        #if defined(IMHEX_OHOS_PORT)
+        // Sandbox copies must always be exportable via the system save
+        // picker, even in direct-access (large file) mode — otherwise the
+        // user could never get the modified data out of the sandbox.
+        return isWritable();
+        #else
         return m_loadedIntoMemory;
+        #endif
     }
 
     void FileProvider::readRaw(u64 offset, void *buffer, size_t size) {
@@ -75,6 +87,25 @@ namespace hex::plugin::builtin {
     }
 
     void FileProvider::save() {
+        #if defined(IMHEX_OHOS_PORT)
+        // Imported sandbox copies (filesDir/opened_files) are temporary
+        // working copies; the user's data would otherwise be trapped in the
+        // sandbox. Ctrl+S therefore redirects to the system save picker and
+        // exports the current data to a system-visible location. The callback
+        // runs on the render thread via the save-dialog bridge (fs.cpp
+        // ohosSaveToFd). On cancel the provider stays dirty — nothing is lost.
+        if (const char *home = std::getenv("HOME"); home != nullptr) {
+            const auto openedPrefix = std::fs::path(home) / "opened_files";
+            if (m_path.string().starts_with(openedPrefix.string() + "/")) {
+                fs::openFileBrowser(fs::DialogMode::Save, {}, [this](const std::fs::path &target) {
+                    this->saveAs(target);
+                    this->markDirty(false);
+                });
+                return;
+            }
+        }
+        #endif
+
         if (m_loadedIntoMemory) {
             m_ignoreNextChangeEvent = true;
             m_file.open();
@@ -214,14 +245,9 @@ namespace hex::plugin::builtin {
         const bool directAccess = fileSize >= maxMemoryFileSize;
         const auto result = open(directAccess);
 
-        if (result.isSuccess() && directAccess) {
-            m_writable = false;
-
-            ui::BannerButton::open(ICON_VS_WARNING, "hex.builtin.provider.file.too_large", ImColor(135, 116, 66), "hex.builtin.provider.file.too_large.allow_write", [this]{
-                m_writable = true;
-                RequestUpdateWindowTitle::post();
-            });
-        }
+        // No read-only banner for large files: on OHOS the sandbox copies are
+        // always writable and edits are synced live, and the read-only flag
+        // was never enforced by writeRaw anyway — the banner only confused.
 
         return result;
     }
@@ -362,6 +388,7 @@ namespace hex::plugin::builtin {
             return;
         }
 
+        #if !defined(IMHEX_OHOS_PORT)
         m_changeEventAcknowledgementPending = true;
         ui::BannerButton::open(ICON_VS_INFO, "hex.builtin.provider.file.reload_changes", ImColor(66, 104, 135), "hex.builtin.provider.file.reload_changes.reload", [this] {
             this->close();
@@ -371,6 +398,7 @@ namespace hex::plugin::builtin {
             m_changeEventAcknowledgementPending = false;
             EventDataChanged::post(this);
         });
+        #endif
     }
 
 

@@ -331,12 +331,12 @@ namespace hex::plugin::builtin {
     }
 
     void ViewHighlightRules::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view allows you to create custom highlighting rules based on mathematical expressions. Each rule can contain multiple expressions, each defining a color and a mathematical condition. When the condition evaluates to true for a given byte or range of bytes, those bytes's text will be highlighted with the specified color in the hex editor.\n\n"
-                                      "You can use the following variables in your expressions:\n"
-                                      "- 'value': The byte value at the current offset.\n"
-                                      "- 'offset': The current byte offset within the data source.\n\n"
-                                      "Examples of expressions:\n"
-                                      "- 'value == 0x90' : Highlights all x86 NOP instructions (0x90).\n"
-                                      "- 'value >= 0x41 && value <= 0x5A' : Highlights all uppercase ASCII letters.");
+        ImGuiExt::TextFormattedWrapped("该视图允许你基于数学表达式创建自定义高亮规则。每条规则可以包含多个表达式，每个表达式定义一个颜色和一个数学条件。当条件对某个字节或字节区域求值为真时，该字节的文本将在十六进制编辑器中被高亮为指定颜色。\n\n"
+                                      "你可以在表达式中使用以下变量：\n"
+                                      "- 'value'：当前偏移处的字节值。\n"
+                                      "- 'offset'：当前字节在数据源中的偏移。\n\n"
+                                      "表达式示例：\n"
+                                      "- 'value == 0x90'：高亮所有 x86 NOP 指令（0x90）。\n"
+                                      "- 'value >= 0x41 && value <= 0x5A'：高亮所有大写 ASCII 字母。");
     }
 }

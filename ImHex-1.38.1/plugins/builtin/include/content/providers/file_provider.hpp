@@ -42,6 +42,7 @@ namespace hex::plugin::builtin {
         std::vector<MenuEntry> getMenuEntries() override;
 
         void setPath(const std::fs::path &path);
+        [[nodiscard]] const std::fs::path& getPath() const { return m_path; }
 
         [[nodiscard]] OpenResult open() override;
         void close() override;

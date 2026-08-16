@@ -128,7 +128,7 @@ namespace hex::plugin::builtin {
     }
 
     void ViewThemeManager::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view allows you to customize the colors and styles of the ImHex interface. You can modify individual colors and styles and save them as themes that you can load later or share with others.");
+        ImGuiExt::TextFormattedWrapped("该视图允许你自定义 HmHex 界面的颜色和样式。你可以修改各个颜色和样式，并将其保存为主题，以便日后加载或与他人分享。");
     }
 
 }

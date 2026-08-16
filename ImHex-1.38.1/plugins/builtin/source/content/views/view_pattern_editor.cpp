@@ -1464,7 +1464,11 @@ namespace hex::plugin::builtin {
                 if (m_textHighlighter.getRunningColorizers() == 0) {
                     m_textHighlighter.m_needsToUpdateColors = false;
                     m_changesWereParsed = false;
-                    TaskManager::createBackgroundTask("HighlightSourceCode", [this](auto &) { m_textHighlighter.highlightSourceCode(); });
+                    // Capture the editor text on the render thread: the
+                    // highlighter runs in a background task and must never
+                    // read the TextEditor from there (it races with edits).
+                    const std::string textSnapshot = m_textEditor.get(provider).getText();
+                    TaskManager::createBackgroundTask("HighlightSourceCode", [this, textSnapshot](auto &) { m_textHighlighter.highlightSourceCode(textSnapshot); });
                 } else {
                     m_textHighlighter.interrupt();
                 }
@@ -2590,10 +2594,12 @@ namespace hex::plugin::builtin {
             return;
         }
 
+        #if !defined(IMHEX_OHOS_PORT)
         m_changeEventAcknowledgementPending.get(provider) = true;
         hex::ui::BannerButton::open(ICON_VS_INFO, "hex.builtin.provider.file.reload_changes", ImColor(66, 104, 135), "hex.builtin.provider.file.reload_changes.reload", [this, provider] {
             m_changeEventAcknowledgementPending.get(provider) = false;
         });
+        #endif
     }
 
     void ViewPatternEditor::openPatternFile(bool trackFile) {
@@ -2693,12 +2699,12 @@ namespace hex::plugin::builtin {
     }
 
     void ViewPatternEditor::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This is the Pattern Editor view, where you can write and edit pattern matching code to analyze the loaded data. For more information on how to write pattern code, please refer to the official documentation and the check out the existing patterns included with ImHex.");
+        ImGuiExt::TextFormattedWrapped("这是模式编辑器视图，你可以在这里编写和编辑模式匹配代码来分析已加载的数据。关于如何编写模式代码的更多信息，请参考官方文档，并查看 HmHex 自带的一些现有模式。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("This view works in close conjunction with the Hex Editor view and the Pattern Data view. When you finished writing your code, click on the Play button at the bottom of the view or press {} to evaluate the pattern.",
+        ImGuiExt::TextFormattedWrapped("该视图与十六进制编辑器视图和模式数据视图紧密配合。编写完代码后，点击视图底部的播放按钮或按 {} 来执行模式。",
             ShortcutManager::getShortcutByName({ "hex.builtin.menu.edit","hex.builtin.view.pattern_editor.menu.edit.run_pattern" }).toString()
         );
-        ImGuiExt::TextFormattedWrapped("This will execute your code, output any log messages to the console window below and create a pattern tree that gets displayed in the Pattern Data view and highlights matching regions in the Hex Editor view.");
+        ImGuiExt::TextFormattedWrapped("这将执行你的代码，将日志信息输出到下方的控制台窗口，并生成模式树，显示在模式数据视图中，同时在十六进制编辑器视图中高亮匹配的区域。");
     }
 
 }

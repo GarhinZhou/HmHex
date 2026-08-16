@@ -114,8 +114,10 @@ namespace hex::plugin::builtin {
                             }
 
                             TaskManager::createBackgroundTask("hex.builtin.task.uploading_crash", [path = m_logFilePath, data](auto&){
+                                #if !defined(IMHEX_OHOS_PORT)
                                 HttpRequest request("POST", ImHexApiURL + std::string("/crash_upload"));
                                 request.uploadFile(std::vector<u8>(data.begin(), data.end()), "file", path.filename()).wait();
+                                #endif
                             });
                         }
                     }
@@ -669,7 +671,9 @@ namespace hex::plugin::builtin {
             s_simplifiedWelcomeScreen = value.get<bool>(false);
         });
         ContentRegistry::Settings::onChange("hex.builtin.setting.interface", "hex.builtin.setting.interface.language", [](const ContentRegistry::Settings::SettingsValue &value) {
-            auto language = value.get<std::string>("en-US");
+            // "zh-CN" default: HmHex starts in Simplified Chinese unless the
+            // user explicitly picks another language in the settings.
+            auto language = value.get<std::string>("zh-CN");
             if (language != LocalizationManager::getSelectedLanguageId())
                 LocalizationManager::setLanguage(language);
         });
@@ -865,6 +869,7 @@ namespace hex::plugin::builtin {
             auto allowNetworking = ContentRegistry::Settings::read<bool>("hex.builtin.setting.general", "hex.builtin.setting.general.network_interface", false)
                 && ContentRegistry::Settings::read<int>("hex.builtin.setting.general", "hex.builtin.setting.general.server_contact", 0) != 0;
             if (!s_infoBannerTexture->isValid() && allowNetworking) {
+                #if !defined(IMHEX_OHOS_PORT)
                 TaskManager::createBackgroundTask("hex.builtin.task.loading_banner", [](auto&) {
                     HttpRequest request("GET",
                         ImHexApiURL + fmt::format("/info/{}/image", hex::toLower(ImHexApi::System::getOSName())));
@@ -880,6 +885,7 @@ namespace hex::plugin::builtin {
                         }
                     }
                 });
+                #endif
             }
         });
     }

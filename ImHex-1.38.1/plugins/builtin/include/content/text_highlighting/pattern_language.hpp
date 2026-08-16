@@ -64,6 +64,13 @@ namespace hex::plugin::builtin {
         TokenColor m_tokenColors;
         std::unique_ptr<pl::PatternLanguage> *patternLanguage;
         std::vector<CompileError> m_compileErrors;
+
+        // Results computed on the background thread and applied to the
+        // TextEditor on the render thread (via doLater in highlightSourceCode).
+        std::vector<std::pair<i64, std::string>> m_colorLinesToApply;
+        ui::TextEditor::ErrorMarkers m_errorMarkersToApply;
+        bool m_hasErrorMarkersToApply = false;
+
         std::map<std::string,std::vector<i32>> m_instances;
         Definitions m_UDTDefinitions;
         Definitions m_functionDefinitions;
@@ -162,9 +169,12 @@ namespace hex::plugin::builtin {
         TextHighlighter(ViewPatternEditor *viewPatternEditor, std::unique_ptr<pl::PatternLanguage> *patternLanguage ) :
                 m_viewPatternEditor(viewPatternEditor), patternLanguage(patternLanguage), m_needsToUpdateColors(true) {}
         /**
-         * @brief Entry point to syntax highlighting
+         * @brief Entry point to syntax highlighting. Runs on a background
+         *        thread and must never touch the TextEditor directly; the
+         *        caller passes a text snapshot taken on the render thread,
+         *        and the results are applied via doLater on the render thread.
          */
-        void highlightSourceCode();
+        void highlightSourceCode(const std::string &text);
         void processSource();
         void clearVariables();
 

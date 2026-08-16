@@ -621,12 +621,12 @@ namespace hex::plugin::builtin {
     }
 
     void ViewDataInspector::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view decodes bytes, starting from the currently selected address in the Hex Editor View, as various different data types.");
+        ImGuiExt::TextFormattedWrapped("该视图从十六进制编辑器视图中当前选中的地址开始，将字节解码为各种不同的数据类型。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("The decoding here may or may not make sense depending on the actual data at the selected address but it can give a rough idea of what kind of data is present. If certain types make no sense, they can be hidden by entering the editing mode (pencil icon) and clicking the eye icon next to the corresponding row.");
+        ImGuiExt::TextFormattedWrapped("这里的解码结果是否合理取决于选中地址处的实际数据，但它可以大致反映数据的类型。如果某些类型没有意义，可以进入编辑模式（铅笔图标）并点击对应行旁边的眼睛图标将其隐藏。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("By clicking on a row, the corresponding bytes will be selected in the Hex Editor View and you can use the navigation buttons at the top to move to the next or previous value, assuming you're dealing with a list of such values.");
-        ImGuiExt::TextFormattedWrapped("Double-clicking a row (if editable) will allow you to change the value and write it back to the underlying data. Some types may also have additional options available in the context menu (right-click on a row).");
+        ImGuiExt::TextFormattedWrapped("点击某一行，将在十六进制编辑器视图中选中对应的字节；如果你处理的是这类值的列表，还可以使用顶部的导航按钮移动到下一个或上一个值。");
+        ImGuiExt::TextFormattedWrapped("双击某一行（如果可编辑）可以修改其值并写回到底层数据。某些类型还可以在右键菜单（在行上右键点击）中使用其他选项。");
     }
 
 }

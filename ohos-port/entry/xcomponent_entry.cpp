@@ -63,6 +63,9 @@ extern "C" {
     void glfwOhosSetPendingNativeWindow(void *nativeWindow);
     void *glfwOhosGetWindow();
     void glfwOhosSetWindowSize(int width, int height);
+    void glfwOhosNotifySurfaceChanged(int width, int height);
+    void glfwOhosNotifySurfaceDestroyed();
+    void glfwOhosNotifyReattach(void *nativeWindow);
     void glfwOhosSetScreenDpi(int dpi);
     int glfwOhosGetScreenDpi();
     void glfwOhosSetTitleButtonWidth(float width);
@@ -89,6 +92,14 @@ extern "C" void fileBrowserCallback(const char *path);
 // Implemented in glfw_ohos.cpp: updates the in-process clipboard cache from
 // the system pasteboard (ArkTS side calls this after a pasteboard change).
 extern "C" void glfwOhosSetClipboardCache(const char *text);
+
+// Implemented in libimhex (helpers/fs.cpp, OHOS branch): runs the pending
+// save callback and streams the generated content into the given fd.
+extern "C" void ohosSaveToFd(int fd);
+
+// Implemented in libimhex (helpers/fs.cpp, OHOS branch): clears any pending
+// file-dialog callback (called when the user cancels the system picker).
+extern "C" void ohosCancelFileDialog();
 
 namespace {
 
@@ -251,15 +262,8 @@ namespace {
     void OnSurfaceCreated(OH_NativeXComponent *component, void *window) {
         OHOS_LOG("OnSurfaceCreated: window=%p component=%p", window, (void*)component);
 
-        // Native window wrapper
-        OHNativeWindow *nativeWindow = OH_NativeWindow_CreateNativeWindow(window);
-        if (nativeWindow == nullptr) {
-            OHOS_LOGE("OnSurfaceCreated: OH_NativeWindow_CreateNativeWindow failed");
-            return;
-        }
-        OHOS_LOG("OnSurfaceCreated: nativeWindow=%p", (void*)nativeWindow);
-
         // Register mouse & key callbacks once we have the component handle
+        // (also on surface recreation — the callbacks live on the component).
         OH_NativeXComponent_MouseEvent_Callback mouseCallback {
             .DispatchMouseEvent = [](OH_NativeXComponent *comp, void *win) {
                 dispatchMouseEvent(comp, win);
@@ -270,6 +274,23 @@ namespace {
         OH_NativeXComponent_RegisterKeyEventCallback(component, [](OH_NativeXComponent *comp, void *win) {
             dispatchKeyEvent(comp, win);
         });
+
+        // Native window wrapper
+        OHNativeWindow *nativeWindow = OH_NativeWindow_CreateNativeWindow(window);
+        if (nativeWindow == nullptr) {
+            OHOS_LOGE("OnSurfaceCreated: OH_NativeWindow_CreateNativeWindow failed");
+            return;
+        }
+        OHOS_LOG("OnSurfaceCreated: nativeWindow=%p", (void*)nativeWindow);
+
+        if (glfwOhosGetWindow() != nullptr) {
+            // ImHex is already rendering (surface recreation / ability rebuild
+            // while the process lives on): ask the render thread to attach the
+            // new surface. The event queues behind any pending SurfaceDestroyed,
+            // so the old surface is detached before the new one is attached.
+            glfwOhosNotifyReattach(nativeWindow);
+            return;
+        }
 
         // The GLFW window may not exist yet (ImHex starts lazily). Hand the
         // native window to the GLFW layer; it attaches once the window is created.
@@ -285,15 +306,19 @@ namespace {
         uint64_t width = 0, height = 0;
         if (OH_NativeXComponent_GetXComponentSize(component, window, &width, &height) == 0) {
             OHOS_LOGE("OnSurfaceChanged: %llu x %llu", (unsigned long long)width, (unsigned long long)height);
-            glfwOhosSetWindowSize(static_cast<int>(width), static_cast<int>(height));
+            // Forward through the GLFW event queue: the resize touches ImGui
+            // IO and ImHex window state, which only the render thread may do.
+            glfwOhosNotifySurfaceChanged(static_cast<int>(width), static_cast<int>(height));
         }
     }
 
     void OnSurfaceDestroyed(OH_NativeXComponent *component, void *window) {
         (void)component;
         (void)window;
-        if (void *glfwWindow = glfwOhosGetWindow(); glfwWindow != nullptr)
-            glfwOhosDetachNativeWindow(glfwWindow);
+        // Forward through the GLFW event queue: detaching (destroying the EGL
+        // context/surface) must happen on the render thread, never while the
+        // render thread is mid-frame using them.
+        glfwOhosNotifySurfaceDestroyed();
     }
 
     void OnDispatchTouchEvent(OH_NativeXComponent *component, void *window) {
@@ -363,6 +388,13 @@ namespace {
             return;
         }
         OHOS_LOG("startImHex: surfaceId=%llu nativeWindow=%p", (unsigned long long)surfaceId, (void*)nativeWindow);
+
+        if (glfwOhosGetWindow() != nullptr) {
+            // ImHex is already rendering: re-attach the render thread to the
+            // new surface instead of starting a second instance.
+            glfwOhosNotifyReattach(nativeWindow);
+            return;
+        }
 
         glfwOhosSetPendingNativeWindow(nativeWindow);
         startImHexThreadOnce();
@@ -798,35 +830,60 @@ namespace {
 
         int32_t fd = -1;
         napi_get_value_int32(env, args[0], &fd);
-        OHOS_LOGE("saveToFd: fd=%{public}d", (int)fd);
+        if (fd < 0) {
+            OHOS_LOGE("saveToFd: invalid fd %{public}d", (int)fd);
+            return nullptr;
+        }
 
-        // Write the provider data on the render thread; the provider must not
-        // be accessed from the JS thread. TaskManager::doLater runs on it.
-        hex::TaskManager::doLater([fd] {
-            auto *provider = hex::ImHexApi::Provider::get();
-            if (provider == nullptr) {
-                OHOS_LOGE("saveToFd: no provider, closing fd");
-                ::close(fd);
-                return;
-            }
+        // Duplicate the fd synchronously on the JS thread: the ArkTS File
+        // object that owns it may be garbage collected (closing the original
+        // fd) before the render thread gets around to writing.
+        const int dupFd = ::dup(fd);
+        if (dupFd < 0) {
+            OHOS_LOGE("saveToFd: dup failed errno=%{public}d", errno);
+            return nullptr;
+        }
+        OHOS_LOGE("saveToFd: fd=%{public}d dup=%{public}d", (int)fd, dupFd);
 
-            const auto size = provider->getSize();
-            std::vector<std::uint8_t> buffer(static_cast<size_t>(size));
-            provider->readRaw(0, buffer.data(), buffer.size());
-
-            ssize_t written = ::write(fd, buffer.data(), buffer.size());
-            if (written < 0)
-                OHOS_LOGE("saveToFd: write failed errno=%{public}d", errno);
-            else
-                OHOS_LOGE("saveToFd: wrote %{public}zd of %{public}zu bytes", written, buffer.size());
-            ::close(fd);
-
-            // The data was written out; clear the dirty flag so ImHex stops
-            // asking to save and the watchdog is never triggered again.
-            hex::ImHexApi::Provider::resetDirty();
+        // Run the pending save callback and stream its output into the fd on
+        // the render thread (implemented in fs.cpp).
+        hex::TaskManager::doLater([dupFd] {
+            ohosSaveToFd(dupFd);
         });
 
         return nullptr;
+    }
+
+    napi_value NapiCancelFileDialog(napi_env env, napi_callback_info info) {
+        (void)env;
+        (void)info;
+        // The user dismissed the system picker without choosing a file:
+        // drop any pending dialog callback so it can never fire later.
+        ohosCancelFileDialog();
+        return nullptr;
+    }
+
+    napi_value NapiNotifyWindowCloseRequested(napi_env env, napi_callback_info info) {
+        (void)info;
+        // The system close button (three-button navigation bar) was clicked.
+        // Hand the close over to ImHex's own flow, which prompts for
+        // unsaved changes and exits via ohosNotifyExitApp -> terminateSelf.
+        // Returns true when ImHex is running and took over (the ArkTS side
+        // keeps the window open); false when ImHex is not up yet (the window
+        // should close normally).
+        bool handled = false;
+        {
+            std::lock_guard lock(sPendingOpenMutex);
+            handled = sImHexStarted;
+        }
+        if (handled)
+            hex::TaskManager::doLater([] {
+                hex::EventCloseButtonPressed::post();
+            });
+
+        napi_value result = nullptr;
+        napi_get_boolean(env, handled, &result);
+        return result;
     }
 
     // --- Clipboard bridge (system pasteboard) ------------------------------
@@ -835,7 +892,6 @@ namespace {
     // changes and mirrors the content back into the native clipboard cache.
 
     static napi_threadsafe_function sClipboardTsfn = nullptr;
-    static char sClipboardPending[4096] = { 0 };
 
     napi_value NapiSetClipboardCallback(napi_env env, napi_callback_info info) {
         size_t argc = 1;
@@ -854,6 +910,8 @@ namespace {
         napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, resourceName, 0, 1, nullptr, nullptr, nullptr,
             [](napi_env env, napi_value jsCallback, void *, void *data) {
+                // Each call owns its own heap copy, so concurrent/rapid
+                // clipboard writes can never tear or overwrite each other.
                 const char *text = static_cast<const char *>(data);
                 napi_value arg = nullptr;
                 napi_create_string_utf8(env, text, NAPI_AUTO_LENGTH, &arg);
@@ -861,6 +919,7 @@ namespace {
                 napi_get_global(env, &global);
                 napi_value result = nullptr;
                 napi_call_function(env, global, jsCallback, 1, &arg, &result);
+                std::free(const_cast<char *>(text));
             },
             &sClipboardTsfn);
         OHOS_LOGE("setClipboardCallback: status=%d", (int)status);
@@ -870,12 +929,17 @@ namespace {
     extern "C" void ohosNotifyClipboardSet(const char *text) {
         if (sClipboardTsfn == nullptr || text == nullptr)
             return;
-        std::strncpy(sClipboardPending, text, sizeof(sClipboardPending) - 1);
-        sClipboardPending[sizeof(sClipboardPending) - 1] = '\0';
+        // Heap-allocate a private copy per call; the TSFN callback frees it
+        // after delivering, so there is no shared buffer to race on.
+        char *copy = strdup(text);
+        if (copy == nullptr)
+            return;
         // Non-blocking: the render thread must never stall on the JS thread
         // (e.g. while a key event is being dispatched), that would freeze
         // ImHex's main loop and make input appear dead.
-        napi_call_threadsafe_function(sClipboardTsfn, sClipboardPending, napi_tsfn_nonblocking);
+        const napi_status status = napi_call_threadsafe_function(sClipboardTsfn, copy, napi_tsfn_nonblocking);
+        if (status != napi_ok)
+            std::free(copy);
     }
 
     // --- Clipboard read-through (READ_PASTEBOARD) --------------------------
@@ -972,6 +1036,45 @@ namespace {
     napi_value NapiUnlockFrameRate(napi_env env, napi_callback_info info) {
         hex::ImHexApi::System::unlockFrameRate();
         return nullptr;
+    }
+
+    // --- System language bridge -------------------------------------------
+    // The ArkTS side forwards the system language (i18n.getSystemLanguage())
+    // before ImHex initializes; getOSLanguage (localization_manager) reads it
+    // so the UI follows the system language when no explicit language setting
+    // is stored.
+    static std::string sSystemLanguage;
+
+    extern "C" const char *ohosGetSystemLanguage() {
+        return sSystemLanguage.c_str();
+    }
+
+    napi_value NapiSetSystemLanguage(napi_env env, napi_callback_info info) {
+        size_t argc = 1;
+        napi_value args[1] = { nullptr };
+        napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+        if (argc < 1)
+            return nullptr;
+
+        napi_valuetype type;
+        napi_typeof(env, args[0], &type);
+        if (type == napi_string) {
+            char buf[64] = { 0 };
+            size_t len = 0;
+            napi_get_value_string_utf8(env, args[0], buf, sizeof(buf), &len);
+            sSystemLanguage = buf;
+            OHOS_LOGE("setSystemLanguage: %{public}s", sSystemLanguage.c_str());
+        }
+        return nullptr;
+    }
+
+    // --- Task status bridge ------------------------------------------------
+    // The ArkTS side polls the number of running ImHex background tasks and
+    // shows a system notification when a task finishes.
+    napi_value NapiGetRunningTaskCount(napi_env env, napi_callback_info info) {
+        napi_value result = nullptr;
+        napi_create_int32(env, static_cast<int32_t>(hex::TaskManager::getRunningTaskCount()), &result);
+        return result;
     }
 
     // --- System theme bridge ---------------------------------------------
@@ -1219,6 +1322,7 @@ namespace {
             { "onMouse",    nullptr, NapiOnMouse,    nullptr, nullptr, nullptr, napi_default, nullptr },
             { "setFileOpenCallback", nullptr, NapiSetFileOpenCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "openFile",   nullptr, NapiOpenFile,   nullptr, nullptr, nullptr, napi_default, nullptr },
+            { "cancelFileDialog", nullptr, NapiCancelFileDialog, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "setSaveFileCallback", nullptr, NapiSetSaveFileCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "saveToFd",   nullptr, NapiSaveToFd,   nullptr, nullptr, nullptr, napi_default, nullptr },
             { "setClipboardCallback", nullptr, NapiSetClipboardCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
@@ -1232,9 +1336,12 @@ namespace {
             { "setCursorCallback", nullptr, NapiSetCursorCallback, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "unlockFrameRate", nullptr, NapiUnlockFrameRate, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "notifySystemTheme", nullptr, NapiNotifySystemTheme, nullptr, nullptr, nullptr, napi_default, nullptr },
+            { "setSystemLanguage", nullptr, NapiSetSystemLanguage, nullptr, nullptr, nullptr, napi_default, nullptr },
+            { "getRunningTaskCount", nullptr, NapiGetRunningTaskCount, nullptr, nullptr, nullptr, napi_default, nullptr },
             { "openFileDropped", nullptr, NapiOpenFileDropped, nullptr, nullptr, nullptr, napi_default, nullptr },
+            { "notifyWindowCloseRequested", nullptr, NapiNotifyWindowCloseRequested, nullptr, nullptr, nullptr, napi_default, nullptr },
         };
-        napi_define_properties(env, exports, 21, desc);
+        napi_define_properties(env, exports, 25, desc);
         return exports;
     }
 

@@ -309,8 +309,8 @@ namespace hex::plugin::disasm {
     }
 
     void ViewDisassembler::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view lets you disassemble byte regions into assembly instructions of various different architectures.");
+        ImGuiExt::TextFormattedWrapped("该视图可以将字节区域反汇编为各种不同架构的汇编指令。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("Select the desired Architecture from the tabs in the settings panel and configure its options as needed. Clicking the \"Disassemble\" button will disassemble the selected region (or the entire data if no region is selected) and display the resulting instructions in a table below.");
+        ImGuiExt::TextFormattedWrapped("在设置面板的选项卡中选择所需的架构，并按需配置其选项。点击“反汇编”按钮将反汇编选中的区域（如果未选择区域则反汇编整个数据），并在下方的表格中显示生成的指令。");
     }
 }

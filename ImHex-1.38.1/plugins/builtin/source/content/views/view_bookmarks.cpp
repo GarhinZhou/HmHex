@@ -655,12 +655,12 @@ namespace hex::plugin::builtin {
     }
 
     void ViewBookmarks::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("All your created Bookmarks will be listed in here.");
+        ImGuiExt::TextFormattedWrapped("你创建的所有书签都会列在这里。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("Bookmarks provide an easy way to mark important regions in your binary and quickly navigate to them later. You can also name them, add further information through comments or change their color.");
+        ImGuiExt::TextFormattedWrapped("书签提供了一种简单的方式，可以在二进制数据中标记重要区域，并在之后快速跳转到它们。你还可以为书签命名、通过注释添加更多信息或更改其颜色。");
         ImGui::NewLine();
         ImGuiExt::TextFormattedWrapped(
-            "To create a Bookmark, select a byte region in the Hex Editor view and use the {} option in the {} menu or use the shortcut '{}'.",
+            "要创建书签，请在十六进制编辑器视图中选择一个字节区域，然后使用 {} 选项（位于 {} 菜单中），或使用快捷键 '{}'。",
             "hex.builtin.menu.edit.bookmark.create"_lang, "hex.builtin.menu.edit"_lang,
             ShortcutManager::getShortcutByName(
                 { "hex.builtin.menu.edit", "hex.builtin.menu.edit.bookmark.create" },

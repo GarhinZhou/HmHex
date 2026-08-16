@@ -1,42 +1,42 @@
 {
-    "3d_visualizer.png": {
-        "title": "Advanced Data Visualizers",
-        "description": "After analyzing data using the pattern language, it's often useful to visualize parts of that data. ImHex provides a variety of visualizers that can be used to visualize different types of data right in the editor.\n\nAvailable visualizers include a 3D model viewer, RGBA and Image decoder, an audio player, line and scatter plots and many more!"
-    },
-    "bookmarks.png": {
-        "title": "Bookmarks",
-        "description": "Bookmarks can be used to mark interesting locations in the file, give them a name, color and description."
-    },
-    "data_analysis.png": {
-        "title": "Data Analysis",
-        "description": "ImHex provides a variety of tools to analyze data and finding interesting information in it. This includes byte type and entropy graphs, byte frequency analysis, digram and layered distribution graphs and file magic based data type detection."
-    },
-    "data_processor.png": {
-        "title": "Data Pre-processors",
-        "description": "ImHex's data pre-processors can be used to transform the data before it's displayed in the editor. This can be used to decrypt encrypted data, extract parts of the file for further analysis or calculate custom checksums."
-    },
-    "diffing.png": {
-        "title": "Binary Diffing",
-        "description": "ImHex provides a powerful binary diffing tool that can compare two files and find the differences between them. It's able identify insertions, deletions and modifications of data."
-    },
-    "floating_windows.png": {
-        "title": "Modern Interface",
-        "description": "ImHex's interface is based on a range of dockable windows that can be moved around and detached from the main window at any time. This allows for a very flexible and customizable interface.\n\nThe interface is also fully themeable and comes with various built-in themes by default."
-    },
-    "patterns.png": {
-        "title": "Pattern Language",
-        "description": "ImHex's pattern language is a C-like language that can be used to describe data structures and patterns in the data. Writing format specifications in it allows ImHex to parse and decode the data and display it in a human readable way as well as highlight the different parts of the data in the Hex Editor.\n\nMany common data formats are already supported by the community and new ones can be created and shared easily."
-    },
-    "simplified_mode.png": {
-        "title": "Simplified Mode",
-        "description": "ImHex's simplified mode is a more beginner friendly mode that hides some of the more advanced features of the editor. It's a great way to get started with reverse engineering and binary analysis or to use ImHex without being overwhelmed by the amount of features."
-    },
-    "tools.png": {
-        "title": "Helpful Tools",
-        "description": "ImHex comes with a variety of tools that can be used to analyze and modify the data. This includes a symbol demangler, calculator, TCP client and server and many more!"
-    },
-    "welcome_screen.png": {
-        "title": "Welcome Screen",
-        "description": "ImHex's welcome screen provides a quick overview of the most important features and allows to quickly open files and projects.\n\nThere's many more options that go beyond just opening files, such as connecting to a GDB Server, attaching to a process or opening Intel Hex, Motorola S-Record and Base64 files."
-    }
+  "3d_visualizer.png": {
+    "title": "高级数据可视化",
+    "description": "使用模式语言分析数据后，您可以通过多种 3D 可视化器直观地查看数据，帮助发现模式与异常。"
+  },
+  "bookmarks.png": {
+    "title": "书签",
+    "description": "书签可用于标记文件中的有趣位置，并附上名称与备注，方便快速跳转与整理分析笔记。"
+  },
+  "data_analysis.png": {
+    "title": "数据分析",
+    "description": "ImHex 提供多种数据分析工具，包括十六进制搜索、模式扫描、字符串提取与哈希计算等。"
+  },
+  "data_processor.png": {
+    "title": "数据处理器",
+    "description": "数据处理器可对数据进行变换与预处理，通过可视化流程编辑器构建数据处理流水线。"
+  },
+  "diffing.png": {
+    "title": "二进制差异比较",
+    "description": "ImHex 提供强大的二进制差异比较工具，可逐字节对比两个文件的差异并可视化显示。"
+  },
+  "floating_windows.png": {
+    "title": "现代界面",
+    "description": "ImHex 的界面基于可停靠窗口系统，您可以根据需要自由排列、停靠与浮动各个视图。"
+  },
+  "patterns.png": {
+    "title": "模式语言",
+    "description": "ImHex 的模式语言是一种类 C 的脚本语言，可定义二进制数据的结构并自动解析显示。"
+  },
+  "simplified_mode.png": {
+    "title": "简洁模式",
+    "description": "简洁模式提供更友好的简化界面，适合初学者快速上手十六进制编辑。"
+  },
+  "tools.png": {
+    "title": "实用工具",
+    "description": "ImHex 附带多种实用工具，如字节处理、进制转换、文件结构分析与逆向辅助功能。"
+  },
+  "welcome_screen.png": {
+    "title": "欢迎界面",
+    "description": "欢迎界面提供最近文件、快速操作与功能入口的概览，方便您快速开始工作。"
+  }
 }

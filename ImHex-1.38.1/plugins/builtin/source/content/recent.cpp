@@ -1,4 +1,5 @@
 #include <content/recent.hpp>
+#include <content/providers/file_provider.hpp>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -22,10 +23,15 @@
 #include <toasts/toast_notification.hpp>
 #include <fonts/vscode_icons.hpp>
 
+#include <cstdlib>
 #include <ranges>
 #include <unordered_set>
 #include <hex/api/content_registry/views.hpp>
 #include <hex/helpers/menu_items.hpp>
+
+#if defined(IMHEX_OHOS_PORT)
+    #include <hilog/log.h>
+#endif
 
 namespace hex::plugin::builtin::recent {
 
@@ -189,6 +195,53 @@ namespace hex::plugin::builtin::recent {
             updateRecentEntries();
         });
 
+        #if defined(IMHEX_OHOS_PORT)
+        // An imported sandbox copy (filesDir/opened_files) was closed: if it is
+        // no longer referenced by any recent entry (it was evicted from the
+        // 5-entry list), the copy is now orphaned. Its data was either already
+        // exported via the save redirect (Ctrl+S / close prompt), or it is an
+        // unmodified import whose original still lives outside the sandbox —
+        // so it can be removed safely. Copies still listed in recents are kept
+        // so they can be reopened from the list.
+        (void)EventProviderClosed::subscribe([](const prv::Provider *provider) {
+            if (auto *fileProvider = dynamic_cast<const FileProvider*>(provider); fileProvider != nullptr) {
+                const auto &copyPath = fileProvider->getPath();
+                const char *home = std::getenv("HOME");
+                if (home == nullptr)
+                    return;
+                const auto openedPrefix = std::fs::path(home) / "opened_files";
+                if (!copyPath.string().starts_with(openedPrefix.string() + "/"))
+                    return;
+
+                bool referenced = false;
+                for (const auto &recentPath : paths::Recent.read()) {
+                    std::error_code iterEc;
+                    for (const auto &entry : std::fs::directory_iterator(recentPath, iterEc)) {
+                        std::error_code statEc;
+                        if (!entry.is_regular_file(statEc) || statEc)
+                            continue;
+                        try {
+                            auto json = nlohmann::json::parse(wolv::io::File(entry.path(), wolv::io::File::Mode::Read).readString());
+                            if (json.contains("path") && json["path"].get<std::string>() == copyPath.string()) {
+                                referenced = true;
+                                break;
+                            }
+                        } catch (const std::exception &) { }
+                    }
+                    if (referenced || iterEc)
+                        break;
+                }
+
+                if (!referenced) {
+                    std::error_code removeEc;
+                    std::fs::remove(copyPath, removeEc);
+                    OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                 "closed orphan copy removed: %{public}s", copyPath.string().c_str());
+                }
+            }
+        });
+        #endif
+
         // Add opened projects to "recents" shortcuts
         (void)EventProjectOpened::subscribe(saveCurrentProjectAsRecent);
         // When saving a project, update its "recents" entry. This is mostly useful when using saving a new project
@@ -264,8 +317,46 @@ namespace hex::plugin::builtin::recent {
                     }
                 }
 
-                if (!found)
+                if (!found) {
+                    #if defined(IMHEX_OHOS_PORT)
+                    // The recent entry was evicted (only 5 entries are kept):
+                    // also remove the sandbox copy (filesDir/opened_files) it
+                    // referenced, unless that file is still open. The in-use
+                    // check must run on the render thread: the provider list
+                    // is not thread-safe and may change while this task runs.
+                    std::fs::path copyPath;
+                    try {
+                        auto json = nlohmann::json::parse(wolv::io::File(path, wolv::io::File::Mode::Read).readString());
+                        if (json.contains("path")) {
+                            const auto candidate = std::fs::path(json["path"].get<std::string>());
+                            if (const char *home = std::getenv("HOME"); home != nullptr) {
+                                const auto openedPrefix = std::fs::path(home) / "opened_files";
+                                if (candidate.string().starts_with(openedPrefix.string() + "/"))
+                                    copyPath = candidate;
+                            }
+                        }
+                    } catch (const std::exception &) { }
+
+                    if (!copyPath.empty()) {
+                        hex::TaskManager::doLater([copyPath] {
+                            bool inUse = false;
+                            for (auto *provider : ImHexApi::Provider::getProviders()) {
+                                if (auto *fileProvider = dynamic_cast<FileProvider*>(provider); fileProvider != nullptr && fileProvider->getPath() == copyPath) {
+                                    inUse = true;
+                                    break;
+                                }
+                            }
+                            if (!inUse) {
+                                std::error_code errorCode;
+                                std::fs::remove(copyPath, errorCode);
+                                OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                             "evicted recent: removed copy %{public}s", copyPath.string().c_str());
+                            }
+                        });
+                    }
+                    #endif
                     wolv::io::fs::remove(path);
+                }
             }
 
             s_autoBackupsFound = false;
@@ -380,6 +471,54 @@ namespace hex::plugin::builtin::recent {
 
                     // Handle deletion from vector and on disk
                     if (shouldRemove) {
+                        #if defined(IMHEX_OHOS_PORT)
+                        // Also delete the sandbox copy of the file
+                        // (filesDir/opened_files) referenced by this recent
+                        // entry, if any — those copies are temporary imports.
+                        if (recentEntry.data.contains("path")) {
+                            try {
+                                auto copyPath = std::fs::path(recentEntry.data["path"].get<std::string>());
+                                const char *home = std::getenv("HOME");
+                                OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                             "recent remove: path=%{public}s home=%{public}s",
+                                             recentEntry.data["path"].get<std::string>().c_str(),
+                                             home != nullptr ? home : "(null)");
+                                if (home != nullptr) {
+                                    auto openedPrefix = std::fs::path(home) / "opened_files";
+                                    if (copyPath.string().starts_with(openedPrefix.string() + "/")) {
+                                        // Never delete the sandbox copy while
+                                        // a provider still has it open — the
+                                        // data would be lost on the next save.
+                                        bool inUse = false;
+                                        for (auto *provider : ImHexApi::Provider::getProviders()) {
+                                            if (auto *fileProvider = dynamic_cast<FileProvider*>(provider); fileProvider != nullptr && fileProvider->getPath() == copyPath) {
+                                                inUse = true;
+                                                break;
+                                            }
+                                        }
+                                        if (!inUse) {
+                                            std::error_code errorCode;
+                                            std::fs::remove(copyPath, errorCode);
+                                            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                                         "recent remove: removed copy, ec=%{public}d", int(errorCode.value()));
+                                        } else {
+                                            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                                         "recent remove: copy still in use, kept");
+                                        }
+                                    } else {
+                                        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                                     "recent remove: not in opened_files, skip");
+                                    }
+                                }
+                            } catch (const std::exception &e) {
+                                OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                             "recent remove: exception %{public}s", e.what());
+                            }
+                        } else {
+                            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                         "recent remove: entry has no path field");
+                        }
+                        #endif
                         wolv::io::fs::remove(recentEntry.entryFilePath);
                         it = s_recentEntries.erase(it);
                     } else {

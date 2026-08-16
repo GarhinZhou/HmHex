@@ -549,6 +549,7 @@
   "hex.builtin.task.evaluating_nodes": "评估节点……",
   "hex.builtin.title_bar_button.debug_build": "调试构建\n\nSHIFT + 单击打开调试菜单",
   "hex.builtin.title_bar_button.feedback": "反馈",
+  "hex.builtin.title_bar_button.interactive_help": "交互式帮助",
   "hex.builtin.tools.ascii_table": "ASCII 表",
   "hex.builtin.tools.ascii_table.octal": "显示八进制",
   "hex.builtin.tools.base_converter": "基本进制转换",

@@ -599,9 +599,11 @@ namespace hex::plugin::builtin {
         // Set up the request to get the release notes the first time the page is opened
         const static auto ImHexVersion = ImHexApi::System::getImHexVersion();
         AT_FIRST_TIME {
+            #if !defined(IMHEX_OHOS_PORT)
             static HttpRequest request("GET", GitHubApiURL + std::string("/releases/") + (ImHexVersion.nightly() ? "latest" : ( "tags/v" + ImHexVersion.get(false))));
 
             m_releaseNoteRequest = request.execute();
+            #endif
         };
 
         // Wait for the request to finish and parse the response
@@ -695,8 +697,10 @@ namespace hex::plugin::builtin {
 
         // Set up the request to get the commit history the first time the page is opened
         AT_FIRST_TIME {
+            #if !defined(IMHEX_OHOS_PORT)
             static HttpRequest request("GET", GitHubApiURL + std::string("/commits?per_page=100"));
             m_commitHistoryRequest = request.execute();
+            #endif
         };
 
         // Wait for the request to finish and parse the response

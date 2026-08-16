@@ -241,12 +241,12 @@ namespace hex::plugin::builtin {
     }
 
     void ViewInformation::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view provides various analyses and information about the currently opened data source. "
-                                      "Use the settings panel to select which sections to analyze and the region to analyze. "
-                                      "Click the 'Analyze' button to start the analysis.");
+        ImGuiExt::TextFormattedWrapped("该视图提供关于当前打开的数据源的各种分析和信息。"
+                                      "使用设置面板选择要分析的部分和区域。"
+                                      "点击“分析”按钮开始分析。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("The results of the analysis will be displayed in separate sections below the settings panel. "
-                                      "Each section can be enabled or disabled individually, and some sections may have additional settings available via the gear icon.");
+        ImGuiExt::TextFormattedWrapped("分析结果将显示在设置面板下方的各个独立分区中。"
+                                      "每个分区都可以单独启用或禁用，某些分区还可以通过齿轮图标进行额外设置。");
     }
 
 }

@@ -351,9 +351,9 @@ namespace hex::plugin::hashes {
     }
 
     void ViewHashes::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view allows you to compute various hashes (MD5, SHA1, etc.) on selected data regions.");
+        ImGuiExt::TextFormattedWrapped("该视图允许你对选中的数据区域计算各种哈希值（MD5、SHA1 等）。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("Add a new hash function by double clicking on the last row in the Hashes table and configure it to your needs. You can add multiple hash functions and see their results in real-time as you select different regions of data in the hex editor. "
-                                       "Hold SHIFT while selecting data to see hash results in the tooltip.");
+        ImGuiExt::TextFormattedWrapped("双击哈希表中的最后一行可以添加新的哈希函数，并按需进行配置。你可以添加多个哈希函数，并在十六进制编辑器中选中不同数据区域时实时查看结果。"
+                                       "选择数据时按住 SHIFT 可在提示框中查看哈希结果。");
     }
 }

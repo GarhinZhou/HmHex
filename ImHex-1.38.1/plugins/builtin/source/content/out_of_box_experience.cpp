@@ -104,12 +104,12 @@ namespace hex::plugin::builtin {
                         ImGui::SameLine();
                         if (ImGui::BeginChild("Text", ImVec2(ImGui::GetContentRegionAvail().x, bannerSize.y))) {
                             fonts::Default().pushBold(1.2);
-                            ImGuiExt::TextFormattedCentered("Welcome to ImHex!");
+                            ImGuiExt::TextFormattedCentered("欢迎使用 HmHex！");
                             fonts::Default().pop();
                             ImGui::NewLine();
                             ImGui::NewLine();
                             ImGui::NewLine();
-                            ImGuiExt::TextFormattedCentered("A powerful data analysis and visualization suite forReverse Engineers, Hackers and Security Researchers.");
+                            ImGuiExt::TextFormattedCentered("一款面向逆向工程师、黑客与安全研究人员的强大数据分析和可视化套件。");
                         }
                         ImGui::EndChild();
 
@@ -191,203 +191,19 @@ namespace hex::plugin::builtin {
                                 clickedImage.clear();
                             }
 
-                            // Continue button
+                            // Continue button (skip the language-selection
+                            // page; the UI language defaults to Chinese)
                             const auto buttonSize = scaled({ 130, 50 });
                             ImGui::SetCursorPos(ImHexApi::System::getMainWindowSize() - buttonSize - scaled({ 10, 10 }));
                             ImGui::PushStyleVar(ImGuiStyleVar_Alpha, buttonFadeIn);
                             if (ImGuiExt::DimmedButton(fmt::format("{} {}", "hex.ui.common.continue"_lang, ICON_VS_ARROW_RIGHT).c_str(), buttonSize))
-                                page += 1;
+                                page = 3;
                             ImGui::PopStyleVar();
                         }
 
 
                         ImGui::PopStyleVar();
 
-
-                        break;
-                    }
-
-                    // Language selection page
-                    case 1: {
-                        static const auto &languages = LocalizationManager::getLanguageDefinitions();
-                        static auto currLanguage = languages.begin();
-                        static float prevTime = 0;
-
-                        ImGui::NewLine();
-
-                        ImGui::NewLine();
-                        ImGui::NewLine();
-                        ImGui::NewLine();
-
-                        static Blend textFadeOut(2.5F, 2.9F);
-                        static Blend textFadeIn(0.1F, 0.5F);
-
-                        auto currTime = ImGui::GetTime();
-                        if ((currTime - prevTime) > 3) {
-                            prevTime = currTime;
-                            ++currLanguage;
-
-                            textFadeIn.reset();
-                            textFadeOut.reset();
-                        }
-
-                        if (currLanguage == languages.end())
-                            currLanguage = languages.begin();
-
-                        // Draw globe image
-                        const auto imageSize = s_compassTexture->getSize() / (1.5F * (1.0F / ImHexApi::System::getGlobalScale()));
-                        ImGui::SetCursorPos((ImGui::GetWindowSize() / 2 - imageSize / 2) - ImVec2(0, 100_scaled));
-                        ImGui::Image(*s_globeTexture, imageSize);
-
-                        ImGui::NewLine();
-                        ImGui::NewLine();
-
-
-                        // Draw information text
-                        ImGui::SetCursorPosX(0);
-
-                        const auto availableSize = ImGui::GetContentRegionAvail();
-                        if (ImGui::BeginChild("##language_text", ImVec2(availableSize.x, 30_scaled))) {
-                            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, textFadeIn - textFadeOut));
-                            fonts::Default().push(1.2);
-                            ImGuiExt::TextFormattedCentered("{}", LocalizationManager::get(currLanguage->first, "hex.builtin.setting.interface.language"));
-                            fonts::Default().pop();
-                            ImGui::PopStyleColor();
-                        }
-                        ImGui::EndChild();
-
-                        ImGui::NewLine();
-
-                        // Draw language selection list
-                        ImGui::SetCursorPosX(availableSize.x / 3);
-                        if (ImGuiExt::BeginSubWindow(ICON_VS_GLOBE, nullptr, ImVec2(availableSize.x / 3, availableSize.y - ImGui::GetTextLineHeightWithSpacing() * 3))) {
-                            if (ImGui::BeginListBox("##language", ImGui::GetContentRegionAvail())) {
-                                {
-                                    const auto osLanguage = hex::getOSLanguage();
-                                    if (osLanguage.has_value()) {
-                                        const auto &languageDefinition = LocalizationManager::getLanguageDefinition(osLanguage.value());
-                                        if (ImGui::Selectable(fmt::format("Native ({})", languageDefinition.nativeName).c_str(), LocalizationManager::getSelectedLanguageId() == "native")) {
-                                            LocalizationManager::setLanguage("native");
-                                        }
-                                        ImGui::Separator();
-                                    }
-                                }
-
-                                for (const auto &[langId, definition] : LocalizationManager::getLanguageDefinitions()) {
-                                    if (ImGui::Selectable(definition.name.c_str(), langId == LocalizationManager::getSelectedLanguageId())) {
-                                        LocalizationManager::setLanguage(langId);
-                                    }
-                                }
-                                ImGui::EndListBox();
-                            }
-                        }
-                        ImGuiExt::EndSubWindow();
-
-                        // Continue button
-                        const auto buttonSize = scaled({ 130, 50 });
-                        ImGui::SetCursorPos(ImHexApi::System::getMainWindowSize() - buttonSize - scaled({ 10, 10 }));
-                        if (ImGuiExt::DimmedButton(fmt::format("{} {}", "hex.ui.common.continue"_lang, ICON_VS_ARROW_RIGHT).c_str(), buttonSize))
-                            page += 1;
-
-                        break;
-                    }
-
-                    // Server contact page
-                    case 2: {
-                        static ImVec2 subWindowSize = { 0, 0 };
-                        const auto windowSize = ImHexApi::System::getMainWindowSize();
-
-                        // Draw telemetry subwindow
-                        ImGui::SetCursorPos((windowSize - subWindowSize) / 2);
-                        if (ImGuiExt::BeginSubWindow("hex.builtin.oobe.server_contact"_lang, nullptr, subWindowSize, ImGuiChildFlags_AutoResizeY)) {
-                            // Draw telemetry information
-                            auto yBegin = ImGui::GetCursorPosY();
-                            std::string message = "hex.builtin.oobe.server_contact.text"_lang;
-                            ImGuiExt::TextFormattedWrapped("{}", message.c_str());
-                            ImGui::NewLine();
-
-                            // Draw table containing everything that's being reported
-                            if (ImGui::CollapsingHeader("hex.builtin.oobe.server_contact.data_collected_title"_lang)) {
-                                if (ImGui::BeginTable("hex.builtin.oobe.server_contact.data_collected_table", 2,
-                                                     ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_NoHostExtendY,
-                                                     ImVec2(ImGui::GetContentRegionAvail().x, 150_scaled))) {
-                                    ImGui::TableSetupColumn("hex.builtin.oobe.server_contact.data_collected_table.key"_lang);
-                                    ImGui::TableSetupColumn("hex.builtin.oobe.server_contact.data_collected_table.value"_lang, ImGuiTableColumnFlags_WidthStretch);
-                                    ImGui::TableSetupScrollFreeze(0, 1);
-
-                                    ImGui::TableHeadersRow();
-
-                                    ImGui::TableNextRow();
-                                    ImGui::TableNextColumn();
-                                    ImGui::TextUnformatted("hex.builtin.oobe.server_contact.data_collected.uuid"_lang);
-                                    ImGui::TableNextColumn();
-                                    ImGui::TextWrapped("%s", s_uuid.c_str());
-
-                                    ImGui::TableNextRow();
-                                    ImGui::TableNextColumn();
-                                    ImGui::TextUnformatted("hex.builtin.oobe.server_contact.data_collected.version"_lang);
-                                    ImGui::TableNextColumn();
-                                    ImGuiExt::TextFormattedWrapped("{}\n{}@{}\n{}",
-                                                                ImHexApi::System::getImHexVersion().get(),
-                                                                ImHexApi::System::getCommitHash(true),
-                                                                ImHexApi::System::getCommitBranch(),
-                                                                ImHexApi::System::isPortableVersion() ? "Portable" : "Installed"
-                                     );
-
-                                    ImGui::TableNextRow();
-                                    ImGui::TableNextColumn();
-                                    ImGui::TextUnformatted("hex.builtin.oobe.server_contact.data_collected.os"_lang);
-                                    ImGui::TableNextColumn();
-                                    ImGuiExt::TextFormattedWrapped("{}\n{}\n{}\n{}\nCorporate Environment: {}",
-                                                                ImHexApi::System::getOSName(),
-                                                                ImHexApi::System::getOSVersion(),
-                                                                ImHexApi::System::getArchitecture(),
-                                                                ImHexApi::System::getGPUVendor(),
-                                                                ImHexApi::System::isCorporateEnvironment() ? "Yes" : "No");
-
-                                    ImGui::EndTable();
-                                }
-                            }
-
-                            ImGui::NewLine();
-
-                            const auto width = ImGui::GetWindowWidth();
-                            const auto buttonSize = ImVec2(width / 3 - ImGui::GetStyle().FramePadding.x * 3, 0);
-                            const auto buttonPos = [&](u8 index) { return ImGui::GetStyle().FramePadding.x + (buttonSize.x + ImGui::GetStyle().FramePadding.x * 3) * index; };
-
-                            // Draw allow button
-                            ImGui::SetCursorPosX(buttonPos(0));
-                            if (ImGui::Button("hex.ui.common.allow"_lang, buttonSize)) {
-                                ContentRegistry::Settings::write<int>("hex.builtin.setting.general", "hex.builtin.setting.general.server_contact", 1);
-                                ContentRegistry::Settings::write<int>("hex.builtin.setting.general", "hex.builtin.setting.general.upload_crash_logs", 1);
-                                page += 1;
-                            }
-
-                            ImGui::SameLine();
-
-                            // Draw crash logs only button
-                            ImGui::SetCursorPosX(buttonPos(1));
-                            if (ImGui::Button("hex.builtin.oobe.server_contact.crash_logs_only"_lang, buttonSize)) {
-                                ContentRegistry::Settings::write<int>("hex.builtin.setting.general", "hex.builtin.setting.general.server_contact", 0);
-                                ContentRegistry::Settings::write<int>("hex.builtin.setting.general", "hex.builtin.setting.general.upload_crash_logs", 1);
-                                page += 1;
-                            }
-
-                            ImGui::SameLine();
-
-                            // Draw deny button
-                            ImGui::SetCursorPosX(buttonPos(2));
-                            if (ImGui::Button("hex.ui.common.deny"_lang, buttonSize)) {
-                                ContentRegistry::Settings::write<int>("hex.builtin.setting.general", "hex.builtin.setting.general.server_contact", 0);
-                                ContentRegistry::Settings::write<int>("hex.builtin.setting.general", "hex.builtin.setting.general.upload_crash_logs", 0);
-                                page += 1;
-                            }
-
-                            auto yEnd = ImGui::GetCursorPosY();
-                            subWindowSize = ImGui::GetWindowSize();
-                            subWindowSize.y = (yEnd - yBegin) + 35_scaled;
-                        }
-                        ImGuiExt::EndSubWindow();
 
                         break;
                     }

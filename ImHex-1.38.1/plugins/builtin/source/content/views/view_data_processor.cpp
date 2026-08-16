@@ -1294,12 +1294,12 @@ namespace hex::plugin::builtin {
     }
 
     void ViewDataProcessor::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view lets you create and evaluate data processing pipelines using a node-based interface.\n\n");
+        ImGuiExt::TextFormattedWrapped("该视图允许你使用基于节点的界面创建和运行数据处理流水线。\n\n");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("Right click anywhere in the workspace to add nodes. Connect the nodes by dragging links between their input and output attributes. "
-                                      "Nodes that have no output attributes are considered end nodes and will produce the final output of the pipeline.\n\n"
-                                      "Click the green play button at the bottom to evaluate the current pipeline. If any errors occur during evaluation, "
-                                      "the affected node will be highlighted in red and an error message will be shown when hovering over it.");
+        ImGuiExt::TextFormattedWrapped("在工作区中右键点击任意位置即可添加节点。通过在节点的输入和输出属性之间拖拽连线来连接节点。"
+                                      "没有输出属性的节点被视为末端节点，将产生流水线的最终输出。\n\n"
+                                      "点击底部的绿色播放按钮运行当前流水线。如果运行过程中出现任何错误，"
+                                      "受影响的节点会以红色高亮显示，鼠标悬停时会显示错误信息。");
     }
 
 }

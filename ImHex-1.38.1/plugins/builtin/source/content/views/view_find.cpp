@@ -1277,14 +1277,14 @@ namespace hex::plugin::builtin {
     }
 
     void ViewFind::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view lets you search for all occurrences of a specific pattern in the opened data source.");
+        ImGuiExt::TextFormattedWrapped("该视图允许你在已打开的数据源中搜索特定模式的所有出现位置。");
         ImGui::NewLine();
         ImGuiExt::TextFormattedWrapped(
-            "- Strings: Search for all strings matching the specified criteria.\n"
-            "- Sequences: Search for a specific string character sequence in various encodings.\n"
-            "- Regex: Search for all strings matching the specified regular expression.\n"
-            "- Binary Pattern: Search for a specific byte pattern with wildcards.\n"
-            "- Numeric Value: Search for numeric values within a specified range in various formats."
+            "- 字符串：搜索符合指定条件的所有字符串。\n"
+            "- 序列：以各种编码搜索特定的字符序列。\n"
+            "- 正则表达式：搜索所有匹配指定正则表达式的字符串。\n"
+            "- 二进制模式：搜索带通配符的特定字节模式。\n"
+            "- 数值：在指定范围内以各种格式搜索数值。"
         );
     }
 

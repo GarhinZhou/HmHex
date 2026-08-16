@@ -357,6 +357,9 @@ namespace hex {
     // URL via the ArkTS layer (system browser / app picker).
     #if defined(IMHEX_OHOS_PORT)
         extern "C" void ohosNotifyOpenWebpage(const char *url);
+        // Implemented in the OHOS entry layer: returns the system language
+        // forwarded by the ArkTS side (i18n.getSystemLanguage).
+        extern "C" const char *ohosGetSystemLanguage();
     #endif
 
     void openWebpage(std::string url) {
@@ -848,7 +851,15 @@ namespace hex {
 
     std::optional<std::string> getOSLanguage() {
         const static auto osLanguage = [] -> std::optional<std::string> {
-            #if defined(OS_WINDOWS)
+            #if defined(IMHEX_OHOS_PORT)
+                // OHOS also defines OS_LINUX, so this branch must come before
+                // the Linux environment-variable path, which is meaningless in
+                // the app sandbox. The system language is forwarded by the
+                // ArkTS side (see ohosGetSystemLanguage declaration above).
+                if (const char *lang = ohosGetSystemLanguage(); lang != nullptr && *lang != '\0')
+                    return std::string(lang);
+                return std::nullopt;
+            #elif defined(OS_WINDOWS)
                 const auto langId = ::GetUserDefaultUILanguage();
                 std::array<wchar_t, LOCALE_NAME_MAX_LENGTH> localeName;
                 if (::LCIDToLocaleName(MAKELCID(langId, SORT_DEFAULT), localeName.data(), localeName.size(), 0) > 0) {

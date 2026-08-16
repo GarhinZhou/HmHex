@@ -75,6 +75,6 @@ namespace hex::plugin::builtin {
     }
 
     void ViewTutorials::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view contains all available tutorials to help you get started with ImHex. Select a tutorial from the list and click the 'Start Tutorial' button to begin.");
+        ImGuiExt::TextFormattedWrapped("该视图包含所有可用的教程，帮助你快速上手 HmHex。从列表中选择一个教程，点击“开始教程”按钮即可开始。");
     }
 }

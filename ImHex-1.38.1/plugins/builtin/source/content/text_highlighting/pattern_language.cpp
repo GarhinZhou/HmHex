@@ -2,6 +2,7 @@
 #include <pl/core/ast/ast_node_type_decl.hpp>
 #include <pl/core/ast/ast_node_enum.hpp>
 #include <pl/core/tokens.hpp>
+#include <hex/api/task_manager.hpp>
 #include <hex/helpers/utils.hpp>
 #include <wolv/utils/string.hpp>
 #include <iostream>
@@ -1252,11 +1253,10 @@ namespace hex::plugin::builtin {
                 }
             }
         }
-        ui::TextEditor *editor = m_viewPatternEditor->getTextEditor();
-        if (editor != nullptr)
-            editor->setErrorMarkers(errorMarkers);
-        else
-            log::warn("Text editor not found, provider is null");
+        // Applied to the editor on the render thread by highlightSourceCode's
+        // doLater; never touch the editor from this background thread.
+        m_errorMarkersToApply = std::move(errorMarkers);
+        m_hasErrorMarkersToApply = true;
     }
 
 // creates a map from variable names to a vector of token indices
@@ -1594,11 +1594,10 @@ namespace hex::plugin::builtin {
                         lineOfColors[tokenOffset + j] = color;
                 }
             }
-            ui::TextEditor *editor = m_viewPatternEditor->getTextEditor();
-            if (editor != nullptr)
-                editor->setColorizedLine(line, lineOfColors);
-            else
-                log::warn("Text editor not found, provider is null");
+            // Collected here and applied on the render thread by
+            // highlightSourceCode's doLater; never touch the editor from this
+            // background thread.
+            m_colorLinesToApply.emplace_back(line, std::move(lineOfColors));
         }
     }
 
@@ -1926,15 +1925,14 @@ namespace hex::plugin::builtin {
         if (!m_lines.empty())
             m_lines.clear();
 
-        if (m_text.empty()) {
-            ui::TextEditor *editor = m_viewPatternEditor->getTextEditor();
-            if (editor != nullptr)
-                m_text = editor->getText();
-            else
-                log::warn("Text editor not found, provider is null");
-        }
+        // m_text always comes from the render-thread snapshot passed into
+        // highlightSourceCode; never query the TextEditor from this thread.
+        if (m_text.empty())
+            log::warn("TextHighlighter::loadText: empty text snapshot");
 
         m_lines = wolv::util::splitString(m_text, "\n");
+        if (m_lines.empty())
+            m_lines.emplace_back();
         m_lines.push_back("");
         m_firstTokenIdOfLine.clear();
         m_firstTokenIdOfLine.resize(m_lines.size(), -1);
@@ -2246,8 +2244,15 @@ namespace hex::plugin::builtin {
 
 
 // Only update if needed. Must wait for the parser to finish first.
-    void TextHighlighter::highlightSourceCode() {
+// Runs on a background thread: `text` is a snapshot taken on the render
+// thread, and all editor writes are deferred via doLater, so the background
+// thread never touches TextEditor state (which would race with the render
+// thread's edits and crash — e.g. Line::substr on a reallocated vector).
+    void TextHighlighter::highlightSourceCode(const std::string &text) {
         m_wasInterrupted = false;
+        m_colorLinesToApply.clear();
+        m_errorMarkersToApply.clear();
+        m_hasErrorMarkersToApply = false;
         ON_SCOPE_EXIT {
             if (!m_tokenColors.empty())
                 m_tokenColors.clear();
@@ -2297,11 +2302,9 @@ namespace hex::plugin::builtin {
                 m_globalTokenRange.clear();
             m_globalTokenRange.insert(Interval(0, m_tokens.size()-1));
 
-            ui::TextEditor *editor = m_viewPatternEditor->getTextEditor();
-            if (editor != nullptr)
-                m_text = editor->getText();
-            else
-                log::warn("Text editor not found, provider is null");
+            // Use the snapshot captured on the render thread; reading the
+            // TextEditor from here would race with render-thread edits.
+            m_text = text;
 
             if (m_text.empty() || m_text == "\n")
                 return;
@@ -2324,22 +2327,38 @@ namespace hex::plugin::builtin {
             colorRemainingIdentifierTokens();
             setRequestedIdentifierColors();
 
-            editor = m_viewPatternEditor->getTextEditor();
-            if (editor != nullptr)
-                editor->clearErrorMarkers();
-            else
-                log::warn("Text editor not found, provider is null");
             m_compileErrors = patternLanguage->get()->getCompileErrors();
 
             if (!m_compileErrors.empty())
                 renderErrors();
-            else {
-                editor = m_viewPatternEditor->getTextEditor();
-                if (editor != nullptr)
-                    editor->clearErrorMarkers();
-                else
-                    log::warn("Text editor not found, provider is null");
-            }
+            else
+                m_hasErrorMarkersToApply = true; // empty = clear
+
+            // Apply all results on the render thread: the TextEditor state
+            // must never be touched from this background thread. Copy the
+            // results by value so a subsequently started highlight task can
+            // never race with this deferred application.
+            auto colorLines = std::move(m_colorLinesToApply);
+            auto errorMarkers = std::move(m_errorMarkersToApply);
+            const bool hasErrors = m_hasErrorMarkersToApply;
+            m_colorLinesToApply.clear();
+            m_errorMarkersToApply.clear();
+            m_hasErrorMarkersToApply = false;
+            hex::TaskManager::doLater([this, colorLines = std::move(colorLines), errorMarkers = std::move(errorMarkers), hasErrors] {
+                ui::TextEditor *editor = m_viewPatternEditor->getTextEditor();
+                if (editor == nullptr)
+                    return;
+
+                for (const auto &[line, colors] : colorLines)
+                    editor->setColorizedLine(line, colors);
+
+                if (hasErrors) {
+                    if (errorMarkers.empty())
+                        editor->clearErrorMarkers();
+                    else
+                        editor->setErrorMarkers(errorMarkers);
+                }
+            });
         } catch (const std::out_of_range &e) {
             log::debug("TextHighlighter::highlightSourceCode: Out of range error: {}", e.what());
             m_wasInterrupted = true;

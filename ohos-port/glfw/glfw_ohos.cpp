@@ -219,12 +219,13 @@ namespace {
 
         // Input queue (filled by XComponent callbacks on the UI thread,
         // drained by glfwPollEvents / glfwWaitEvents on the render thread)
-        enum class EventType { Key, Char, MouseButton, CursorPos, CursorEnter, Scroll, Drop, Focus, Close };
+        enum class EventType { Key, Char, MouseButton, CursorPos, CursorEnter, Scroll, Drop, Focus, Close, SurfaceChanged, SurfaceDestroyed, Reattach };
         struct InputEvent {
             EventType type;
             int a = 0, b = 0, c = 0, d = 0;
             double x = 0.0, y = 0.0;
             std::string text;
+            void *ptr = nullptr;
         };
         std::vector<InputEvent> inputQueue;
 
@@ -272,7 +273,43 @@ extern "C" {
             return;
         }
 
+        // Replacing a previously attached native window: release the old
+        // reference (each CreateNativeWindow/CreateNativeWindowFromSurfaceId
+        // must be paired with exactly one DestroyNativeWindow). Detach it from
+        // lastNativeWindow first so a later release can't double-free it.
+        // Also tear down the old EGL surface/context — they still reference
+        // the replaced native window (ordering safety: a Reattach can arrive
+        // before the matching SurfaceDestroyed).
+        // Safe without a lock: this runs on the render thread, while
+        // setPendingNativeWindow (UI thread) never writes lastNativeWindow
+        // once a window is attached.
+        if (window->nativeWindow != nullptr && window->nativeWindow != nativeWindow) {
+            if (g().lastNativeWindow == window->nativeWindow)
+                g().lastNativeWindow = nullptr;
+            OH_NativeWindow_DestroyNativeWindow(window->nativeWindow);
+            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                         "attach: released replaced nativeWindow");
+
+            if (window->display != EGL_NO_DISPLAY) {
+                if (window->surface != EGL_NO_SURFACE) {
+                    eglDestroySurface(window->display, window->surface);
+                    window->surface = EGL_NO_SURFACE;
+                }
+                if (window->context != EGL_NO_CONTEXT) {
+                    eglMakeCurrent(window->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+                    eglDestroyContext(window->display, window->context);
+                    window->context = EGL_NO_CONTEXT;
+                    window->contextCurrent = false;
+                }
+            }
+        }
+
         window->nativeWindow = static_cast<OHNativeWindow *>(nativeWindow);
+        // Track the reference for the surface-destroyed release path. This
+        // runs on the render thread; setPendingNativeWindow (UI thread, under
+        // the global mutex) only writes lastNativeWindow while no window is
+        // attached, so the two never race.
+        g().lastNativeWindow = window->nativeWindow;
         OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
                      "attach: nativeWindow=%p", (void*)nativeWindow);
 
@@ -393,13 +430,57 @@ extern "C" {
     }
 
     // Sets a native window that will be attached when the GLFW window is created.
-    // Called by the XComponent surface callback before ImHex starts.
+    // Called by the XComponent surface callback before ImHex starts. Owns the
+    // OHNativeWindow reference: every created reference is released exactly once
+    // (on replacement, on surface destruction or at process exit).
     void glfwOhosSetPendingNativeWindow(void *nativeWindow) {
+        std::lock_guard lock(g().mutex);
+        if (nativeWindow == nullptr) {
+            g().pendingNativeWindow = nullptr;
+            return;
+        }
+
+        // Surface recreation while ImHex is already rendering: the current EGL
+        // surface still uses the old native window, so drop the new reference
+        // instead of orphaning it.
+        if (g().window != nullptr && g().window->nativeWindow != nullptr) {
+            OH_NativeWindow_DestroyNativeWindow(static_cast<OHNativeWindow *>(nativeWindow));
+            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                         "setPending: window already attached, released new nativeWindow");
+            return;
+        }
+
+        // Overwriting a pending native window that was never attached: release
+        // the old reference.
+        if (g().pendingNativeWindow != nullptr && g().pendingNativeWindow != nativeWindow) {
+            OH_NativeWindow_DestroyNativeWindow(static_cast<OHNativeWindow *>(g().pendingNativeWindow));
+            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                         "setPending: released replaced pending nativeWindow");
+        }
+
         g().pendingNativeWindow = nativeWindow;
         // Remember the native window so later windows (e.g. the main window
         // after the splash window) can re-attach to the same XComponent surface.
-        if (nativeWindow != nullptr)
-            g().lastNativeWindow = nativeWindow;
+        g().lastNativeWindow = nativeWindow;
+    }
+
+    // Releases the remembered native window (called on the render thread once
+    // the XComponent surface was destroyed; detach must have run before).
+    void glfwOhosReleaseLastNativeWindow() {
+        std::lock_guard lock(g().mutex);
+        if (g().lastNativeWindow != nullptr) {
+            OH_NativeWindow_DestroyNativeWindow(static_cast<OHNativeWindow *>(g().lastNativeWindow));
+            g().lastNativeWindow = nullptr;
+        }
+    }
+
+    // Requests the render thread to re-attach to a new native window. Used
+    // when the XComponent surface is recreated while ImHex is already
+    // rendering (page rebuild, 2in1 surface recreation). The event is queued
+    // behind any pending SurfaceDestroyed, so the old surface is detached
+    // first, then the new one is attached.
+    void glfwOhosNotifyReattach(void *nativeWindow) {
+        g().queueEvent({ GlobalState::EventType::Reattach, 0, 0, 0, 0, 0.0, 0.0, {}, nativeWindow });
     }
 
     void *glfwOhosGetWindow() {
@@ -426,6 +507,18 @@ extern "C" {
 
         if (window->windowSizeCallback != nullptr)
             window->windowSizeCallback(window, window->width, window->height);
+    }
+
+    // Surface size change / destruction arrive on the UI thread (XComponent
+    // callbacks). The actual EGL/ImGui state must only be touched on the
+    // render thread, so both are forwarded through the input queue and
+    // applied inside glfwPollEvents.
+    void glfwOhosNotifySurfaceChanged(int width, int height) {
+        g().queueEvent({ GlobalState::EventType::SurfaceChanged, width, height, 0, 0, 0.0, 0.0, {} });
+    }
+
+    void glfwOhosNotifySurfaceDestroyed() {
+        g().queueEvent({ GlobalState::EventType::SurfaceDestroyed, 0, 0, 0, 0, 0.0, 0.0, {} });
     }
 
     // OHOS keycode -> GLFW keycode (exported for the entry layer)
@@ -1186,6 +1279,29 @@ extern "C" {
                 case GlobalState::EventType::Scroll: {
                     if (window->scrollCallback != nullptr)
                         window->scrollCallback(window, event.x, event.y);
+                    break;
+                }
+                case GlobalState::EventType::SurfaceChanged: {
+                    // Applied on the render thread: resizing touches ImGui IO
+                    // and ImHex window state, which must not race with the
+                    // UI thread.
+                    glfwOhosSetWindowSize(event.a, event.b);
+                    break;
+                }
+                case GlobalState::EventType::SurfaceDestroyed: {
+                    // The surface is gone; detach EGL on the render thread so
+                    // we never destroy a context another thread is using, then
+                    // release the remembered native window reference.
+                    glfwOhosDetachNativeWindow(window);
+                    glfwOhosReleaseLastNativeWindow();
+                    break;
+                }
+                case GlobalState::EventType::Reattach: {
+                    // A new XComponent surface arrived (surface recreation /
+                    // ability rebuild while the process lives on). Attach it;
+                    // the old reference is released inside attach.
+                    if (event.ptr != nullptr)
+                        glfwOhosAttachNativeWindow(window, event.ptr);
                     break;
                 }
                 case GlobalState::EventType::Drop: {

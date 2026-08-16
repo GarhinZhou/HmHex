@@ -106,9 +106,9 @@ namespace hex::plugin::builtin {
     }
 
     void ViewTools::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view contains various standalone tools that didn't fit anywhere else but are useful nonetheless.");
+        ImGuiExt::TextFormattedWrapped("该视图包含各种独立的实用工具，它们虽然不属于其他任何视图，但仍然非常有用。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("Click on the arrow icon in the title bar of each tool to open or collapse it. When collapsed, you can drag the tool out of this window to create a separate floating window which can also be docked anywhere you like.");
+        ImGuiExt::TextFormattedWrapped("点击每个工具标题栏中的箭头图标可以展开或折叠它。折叠后，你可以将工具拖出该窗口，创建独立的浮动窗口，也可以将其停靠到任意位置。");
 
     }
 

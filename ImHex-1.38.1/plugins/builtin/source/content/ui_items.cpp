@@ -44,7 +44,7 @@ namespace hex::plugin::builtin {
         }
 
         ContentRegistry::UserInterface::addTitleBarButton(ICON_VS_SMILEY, ImGuiCustomCol_ToolbarGray, "hex.builtin.title_bar_button.feedback", []{
-            hex::openWebpage("https://github.com/WerWolv/ImHex/discussions/categories/feedback");
+            hex::openWebpage("https://github.com/GarhinZhou/HmHex/issues");
         });
 
         ContentRegistry::UserInterface::addTitleBarButton(ICON_TA_HELP, ImGuiCustomCol_ToolbarGray, "hex.builtin.title_bar_button.interactive_help", []{

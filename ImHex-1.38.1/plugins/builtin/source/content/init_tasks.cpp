@@ -26,6 +26,12 @@ namespace hex::plugin::builtin {
         using namespace std::literals::string_literals;
 
         bool checkForUpdatesSync() {
+            #if defined(IMHEX_OHOS_PORT)
+            // OHOS: no automatic update check and no telemetry — updates ship
+            // via the app store; server communication is disabled entirely.
+            return true;
+            #endif
+
             int checkForUpdates = ContentRegistry::Settings::read<int>("hex.builtin.setting.general", "hex.builtin.setting.general.server_contact", 2);
             if (checkForUpdates != 1)
                 return true;

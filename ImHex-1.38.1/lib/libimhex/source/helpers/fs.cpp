@@ -3,6 +3,14 @@
 #if defined(IMHEX_OHOS_PORT)
     #include <hilog/log.h>
     #include <hex/api/events/requests_interaction.hpp>
+    #include <hex/api/task_manager.hpp>
+    #include <wolv/utils/guards.hpp>
+    #include <array>
+    #include <chrono>
+    #include <fstream>
+    #include <limits>
+    #include <mutex>
+    #include <thread>
 #endif
 
 #include <hex/helpers/logger.hpp>
@@ -226,7 +234,12 @@ namespace hex::fs {
         // openFileBrowser stores the callback and notifies the ArkUI layer;
         // once the user picked files and they were copied into the sandbox,
         // the ArkTS side calls back into fileBrowserCallback() with the path.
+        // The callback is consumed (cleared) on use so a cancelled dialog can
+        // never fire a stale callback. A mutex guards it because the callback
+        // is written on the render thread but consumed on the JS thread.
+        static std::mutex sDialogMutex;
         std::function<void(std::fs::path)> currentCallback;
+        std::fs::path currentSaveTmpDir;
 
         // Implemented in the OHOS entry layer (xcomponent_entry.cpp).
         extern "C" void ohosNotifyOpenFileBrowser(bool multiple);
@@ -237,10 +250,21 @@ namespace hex::fs {
                          "fileBrowserCallback: %{public}s", path != nullptr ? path : "(null)");
             if (path == nullptr)
                 return;
-            if (currentCallback) {
-                // A file dialog request is pending: hand the chosen path to
-                // its callback (the picker flow).
-                currentCallback(path);
+
+            std::function<void(std::fs::path)> callback;
+            {
+                std::scoped_lock lock(sDialogMutex);
+                callback = std::move(currentCallback);
+            }
+
+            if (callback) {
+                // The callback is ImHex UI logic (provider creation, toasts,
+                // ImGui state) and must run on the render thread, never on
+                // the NAPI/JS thread. Copy the path before leaving this
+                // thread — it points into a NAPI-owned buffer.
+                hex::TaskManager::doLater([callback = std::move(callback), path = std::string(path)] {
+                    callback(path);
+                });
             } else {
                 // No dialog is pending — the path arrived from outside ImHex
                 // (e.g. a file dropped onto the window). Open it directly via
@@ -251,11 +275,31 @@ namespace hex::fs {
             }
         }
 
+        // Clears any pending dialog callback. Called by the ArkTS side when
+        // the user cancels the system picker, so a stale callback can never
+        // fire later. Also notifies an optional cancel hook (used by the
+        // close-with-unsaved-changes flow to abort the pending close).
+        static std::function<void()> sDialogCancelCallback;
+
+        extern "C" void ohosSetFileDialogCancelCallback(void (*callback)()) {
+            sDialogCancelCallback = callback != nullptr ? std::function<void()>(callback) : std::function<void()>();
+        }
+
+        extern "C" void ohosCancelFileDialog() {
+            {
+                std::scoped_lock lock(sDialogMutex);
+                currentCallback = nullptr;
+            }
+            if (sDialogCancelCallback)
+                sDialogCancelCallback();
+        }
+
         bool openFileBrowser(DialogMode mode, const std::vector<ItemFilter> &validExtensions, const std::function<void(std::fs::path)> &callback, const std::string &defaultPath, bool multiple) {
             OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
                          "openFileBrowser: mode=%d multiple=%d", static_cast<int>(mode), multiple ? 1 : 0);
             switch (mode) {
                 case DialogMode::Open: {
+                    std::scoped_lock lock(sDialogMutex);
                     currentCallback = callback;
                     ohosNotifyOpenFileBrowser(multiple);
                     break;
@@ -263,8 +307,18 @@ namespace hex::fs {
                 case DialogMode::Save: {
                     // The ArkTS side opens the system save picker
                     // (DocumentViewPicker.save) and passes the resulting file
-                    // descriptor back; the entry layer writes the provider
-                    // data into it. The callback is not invoked on this path.
+                    // descriptor back. ohosSaveToFd then runs the pending
+                    // callback against a sandbox temp file and streams the
+                    // generated content into the fd, so "Save As" / exporters
+                    // produce the correct output instead of raw provider data.
+                    // Each save gets a unique temp dir so two overlapping
+                    // saves can never corrupt each other's output.
+                    std::scoped_lock lock(sDialogMutex);
+                    currentCallback = callback;
+                    static u64 tmpDirCounter = 0;
+                    const char *home = getenv("HOME");
+                    const auto base = std::fs::path(home != nullptr ? home : "/data/storage/el2/base/haps/entry/files");
+                    currentSaveTmpDir = base / (".hmhex_export_tmp_" + std::to_string(tmpDirCounter++));
                     ohosNotifySaveFileBrowser();
                     break;
                 }
@@ -281,6 +335,168 @@ namespace hex::fs {
                     std::unreachable();
             }
             return true;
+        }
+
+        // Called on the render thread once the save picker returned a writable
+        // fd (see xcomponent_entry.cpp NapiSaveToFd). Runs the pending save
+        // callback into a unique sandbox temp dir, waits for the generated
+        // file to stabilize (callbacks may write asynchronously, e.g. provider
+        // saveAs), then streams the result into the fd. The temp dir is always
+        // cleaned up on every exit path (success or failure).
+        extern "C" void ohosSaveToFd(int fd) {
+            std::function<void(std::fs::path)> callback;
+            std::fs::path tmpDir;
+            {
+                std::scoped_lock lock(sDialogMutex);
+                callback = std::move(currentCallback);
+                tmpDir   = currentSaveTmpDir;
+            }
+
+            if (!callback || tmpDir.empty()) {
+                OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                             "ohosSaveToFd: no pending save callback, closing fd");
+                ::close(fd);
+                return;
+            }
+
+            std::error_code ec;
+            std::fs::create_directories(tmpDir, ec);
+            if (ec) {
+                OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                             "ohosSaveToFd: cannot create temp dir: %s", ec.message().c_str());
+                ::close(fd);
+                return;
+            }
+
+            // Run the actual save logic. It may start an async task
+            // (provider->saveAs), so the file may not exist yet.
+            try {
+                callback(tmpDir / "out");
+            } catch (const std::exception &e) {
+                OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                             "ohosSaveToFd: save callback threw: %s", e.what());
+                std::error_code rmEc;
+                std::fs::remove_all(tmpDir, rmEc);
+                ::close(fd);
+                return;
+            }
+
+            // Wait for the generated file to stabilize on a background task,
+            // then stream it into the fd.
+            hex::TaskManager::createBackgroundTask("hex.builtin.task.ohos_save_export", [fd, tmpDir](auto &) {
+                // Clean up the temp dir on every exit path. Each save uses
+                // its own directory, so this can never delete another save's
+                // in-flight output.
+                ON_SCOPE_EXIT {
+                    std::error_code rmEc;
+                    std::fs::remove_all(tmpDir, rmEc);
+                    if (rmEc)
+                        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                     "ohosSaveToFd: temp dir cleanup failed: %s", rmEc.message().c_str());
+                };
+
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+                std::fs::path result;
+                auto lastSize = std::numeric_limits<size_t>::max();
+
+                while (std::chrono::steady_clock::now() < deadline) {
+                    // Find the newest regular file in the temp dir.
+                    std::fs::path newest;
+                    auto newestTime = std::filesystem::file_time_type::min();
+                    std::error_code iterEc;
+                    for (const auto &entry : std::fs::directory_iterator(tmpDir, iterEc)) {
+                        std::error_code statEc;
+                        if (!entry.is_regular_file(statEc) || statEc)
+                            continue;
+                        const auto t = entry.last_write_time(statEc);
+                        if (statEc)
+                            continue;
+                        if (newest.empty() || t > newestTime) {
+                            newest    = entry.path();
+                            newestTime = t;
+                        }
+                    }
+                    if (iterEc) {
+                        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                     "ohosSaveToFd: temp dir iteration failed");
+                        break;
+                    }
+
+                    if (newest.empty()) {
+                        lastSize = std::numeric_limits<size_t>::max(); // no file yet
+                    } else {
+                        std::error_code sizeEc;
+                        const auto size = std::fs::file_size(newest, sizeEc);
+                        if (!sizeEc && size == lastSize) {
+                            // Size stable across two samples: writing finished.
+                            result = newest;
+                            break;
+                        }
+                        lastSize = sizeEc ? std::numeric_limits<size_t>::max() : size;
+                    }
+
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                }
+
+                // Timeout fallback: a slow async writer may have produced the
+                // file but never looked "stable" within the window. If a file
+                // exists now, export it anyway instead of giving the user an
+                // empty file.
+                if (result.empty()) {
+                    std::error_code iterEc;
+                    for (const auto &entry : std::fs::directory_iterator(tmpDir, iterEc)) {
+                        std::error_code statEc;
+                        if (entry.is_regular_file(statEc) && !statEc) {
+                            result = entry.path();
+                            break;
+                        }
+                    }
+                    if (result.empty()) {
+                        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                     "ohosSaveToFd: timed out waiting for export file");
+                        ::close(fd);
+                        return;
+                    }
+                    OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                 "ohosSaveToFd: file never stabilized, exporting anyway");
+                }
+
+                // Stream the generated file into the user-chosen fd.
+                std::ifstream stream(result, std::ios::binary);
+                if (!stream) {
+                    OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                 "ohosSaveToFd: cannot open export file");
+                    ::close(fd);
+                    return;
+                }
+
+                std::array<char, 65536> buffer;
+                size_t total = 0;
+                while (stream) {
+                    stream.read(buffer.data(), buffer.size());
+                    const auto count = stream.gcount();
+                    if (count <= 0)
+                        break;
+
+                    size_t offset = 0;
+                    while (offset < static_cast<size_t>(count)) {
+                        const auto written = ::write(fd, buffer.data() + offset, count - offset);
+                        if (written < 0 && errno == EINTR)
+                            continue;
+                        if (written <= 0) {
+                            OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                                         "ohosSaveToFd: write failed errno=%{public}d", errno);
+                            ::close(fd);
+                            return;
+                        }
+                        offset += written;
+                    }
+                    total += offset;
+                }
+                ::close(fd);
+                OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD002D00, "ImHexNative",
+                             "ohosSaveToFd: wrote %{public}zu bytes", total);
+            });
         }
 
     #else

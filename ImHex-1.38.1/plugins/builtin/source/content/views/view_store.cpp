@@ -235,8 +235,14 @@ namespace hex::plugin::builtin {
             category.entries.clear();
         }
 
+        #if defined(IMHEX_OHOS_PORT)
+        // Store content is fetched from the upstream server; disabled on OHOS.
+        m_requestStatus = RequestStatus::Failed;
+        return;
+        #else
         m_httpRequest.setUrl(ImHexApiURL + "/store"s);
         m_apiRequest = m_httpRequest.execute();
+        #endif
     }
 
     void ViewStore::parseResponse() {
@@ -402,7 +408,7 @@ namespace hex::plugin::builtin {
     }
 
     void ViewStore::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view lets you download and update additional content for ImHex, such as pattern files, magic files, themes and more. All content is provided by the ImHex community and can be freely used within ImHex.");
+        ImGuiExt::TextFormattedWrapped("该视图允许你为 HmHex 下载和更新附加内容，例如模式文件、magic 文件、主题等。所有内容均由 ImHex 社区提供，可在 HmHex 中自由使用。");
     }
 
 }

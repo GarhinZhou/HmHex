@@ -73,7 +73,11 @@ namespace hex {
             if (const auto pos = languageId.find('-'); pos != std::string::npos) {
                 // Try to find a match with the language code without region
                 languageId = languageId.substr(0, pos);
+            }
 
+            // Match by language code prefix, even for bare codes like "zh"
+            // (the OHOS system language may arrive without a region suffix).
+            if (languageId.length() >= 2) {
                 for (const auto &definition : *s_languageDefinitions) {
                     if (definition.first.starts_with(languageId) || definition.first.starts_with(toLower(languageId))) {
                         return definition.first;

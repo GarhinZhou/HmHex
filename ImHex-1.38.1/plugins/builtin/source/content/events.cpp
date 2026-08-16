@@ -18,6 +18,18 @@
 #include <hex/providers/provider.hpp>
 #include <hex/ui/view.hpp>
 
+#if defined(IMHEX_OHOS_PORT)
+    #include <hex/api/task_manager.hpp>
+    #include <hex/helpers/fs.hpp>
+    #include <cstdlib>
+    #include <functional>
+    #include <memory>
+
+    // Implemented in libimhex (helpers/fs.cpp, OHOS branch): registers a
+    // callback invoked when the user cancels the system file picker.
+    extern "C" void ohosSetFileDialogCancelCallback(void (*callback)());
+#endif
+
 #include <imgui.h>
 #include <content/global_actions.hpp>
 
@@ -102,14 +114,33 @@ namespace hex::plugin::builtin {
         });
 
         EventCloseButtonPressed::subscribe([]() {
+            #if defined(IMHEX_OHOS_PORT)
+            // On OHOS this event is posted manually by the system close
+            // button guard; mark that we are closing the application so the
+            // per-provider save/close flow knows to exit once everything is
+            // handled. Reset again if the user cancels anywhere in the flow.
+            imhexClosing = true;
+            #endif
+
             if (ImHexApi::Provider::isValid()) {
                 if (ImHexApi::Provider::isDirty()) {
                     ui::PopupQuestion::open("hex.builtin.popup.exit_application.desc"_lang,
                         [] {
                             for (const auto &provider : ImHexApi::Provider::getProviders())
                                 ImHexApi::Provider::remove(provider);
+                            #if defined(IMHEX_OHOS_PORT)
+                            // Exit only once every provider is gone — a
+                            // cancelled unsaved-changes prompt keeps the app
+                            // running with data intact.
+                            if (!ImHexApi::Provider::isValid())
+                                ImHexApi::System::closeImHex();
+                            #endif
                         },
-                        [] { }
+                        [] {
+                            #if defined(IMHEX_OHOS_PORT)
+                            imhexClosing = false;
+                            #endif
+                        }
                     );
                 } else if (TaskManager::getRunningTaskCount() > 0 || TaskManager::getRunningBackgroundTaskCount() > 0) {
                     TaskManager::doLater([] {
@@ -122,13 +153,92 @@ namespace hex::plugin::builtin {
                 } else {
                     for (const auto &provider : ImHexApi::Provider::getProviders())
                         ImHexApi::Provider::remove(provider);
+                    #if defined(IMHEX_OHOS_PORT)
+                    if (!ImHexApi::Provider::isValid())
+                        ImHexApi::System::closeImHex();
+                    #endif
                 }
             } else {
                 ImHexApi::System::closeImHex();
             }
         });
 
+        #if defined(IMHEX_OHOS_PORT)
+        // When the user cancels the system save picker during the
+        // close-with-unsaved-changes flow, abort the pending close so the
+        // provider stays open (dirty) and no data is lost.
+        ohosSetFileDialogCancelCallback([] {
+            ImHexApi::Provider::impl::resetClosingProvider();
+            imhexClosing = false;
+        });
+        #endif
+
         EventProviderClosing::subscribe([](const prv::Provider *provider, bool *shouldClose) {
+            #if defined(IMHEX_OHOS_PORT)
+            // Sandbox copies (imports under filesDir/opened_files) are the
+            // only writable copy of the user's data, so "save" must export
+            // them to a system-visible location. Redirect the close prompt
+            // to the system save picker; if the user cancels it, the provider
+            // stays open (dirty) and nothing is lost.
+            if (provider->isDirty()) {
+                if (auto *fileProvider = dynamic_cast<const FileProvider*>(provider); fileProvider != nullptr) {
+                    const auto &providerPath = fileProvider->getPath();
+                    const char *home = std::getenv("HOME");
+                    if (home != nullptr) {
+                        const auto openedPrefix = std::fs::path(home) / "opened_files";
+                        if (providerPath.string().starts_with(openedPrefix.string() + "/")) {
+                            *shouldClose = false;
+                            // Capture the provider that triggered this close:
+                            // each prompt handles exactly its own provider, so
+                            // multiple dirty sandbox copies closing in sequence
+                            // can never overwrite each other's export.
+                            PopupUnsavedChanges::open("hex.builtin.popup.close_provider.desc"_lang,
+                                [provider] {
+                                    // Save: export the data to a system-visible
+                                    // location via the save-dialog bridge
+                                    // (fs.cpp ohosSaveToFd; callback runs on
+                                    // the render thread).
+                                    auto *fp = const_cast<FileProvider*>(dynamic_cast<const FileProvider*>(provider));
+                                    fs::openFileBrowser(fs::DialogMode::Save, {}, [fp](const std::fs::path &target) {
+                                        if (fp != nullptr) {
+                                            fp->saveAs(target);
+                                            fp->markDirty(false);
+                                        }
+
+                                        // Remove directly: this callback runs
+                                        // before the export background task is
+                                        // created, so the task count is 0 and
+                                        // remove() proceeds immediately.
+                                        if (fp != nullptr)
+                                            ImHexApi::Provider::remove(fp, true);
+                                        // Only exit once no provider is dirty
+                                        // anymore — other unsaved files in the
+                                        // closing sequence must be handled
+                                        // first, never force-quit past them.
+                                        if (imhexClosing && !ImHexApi::Provider::isDirty())
+                                            ImHexApi::System::closeImHex(true);
+                                    });
+                                },
+                                [provider] {
+                                    // Don't save: discard the changes and close.
+                                    ImHexApi::Provider::remove(const_cast<prv::Provider*>(provider), true);
+
+                                    if (imhexClosing && !ImHexApi::Provider::isDirty())
+                                        ImHexApi::System::closeImHex(true);
+                                },
+                                [] {
+                                    // Cancel: keep the provider open (dirty).
+                                    ImHexApi::Provider::impl::resetClosingProvider();
+                                    imhexClosing = false;
+                                }
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
+            #endif
+
             if (provider->isDirty()) {
                 *shouldClose = false;
                 PopupUnsavedChanges::open("hex.builtin.popup.close_provider.desc"_lang,

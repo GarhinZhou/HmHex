@@ -545,13 +545,13 @@ namespace hex::plugin::diffing {
     }
 
     void ViewDiff::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view allows you to do binary comparisons between two data sources. Select the data sources you want to compare from the dropdown menus at the top. Once both data sources are selected, the differences will be calculated automatically.");
+        ImGuiExt::TextFormattedWrapped("该视图允许你在两个数据源之间进行二进制比较。从顶部的下拉菜单中选择要比较的数据源。两个数据源都选定后，将自动计算差异。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("Differences are highlighted in the hex editors. Green indicates added bytes, red indicates removed bytes, and yellow indicates modified bytes. All differences are also listed in the table below the hex editors, where you can click on a difference to jump to it in both hex editors.");
+        ImGuiExt::TextFormattedWrapped("差异会在十六进制编辑器中高亮显示。绿色表示新增字节，红色表示删除的字节，黄色表示修改的字节。所有差异也会列在十六进制编辑器下方的表格中，你可以点击某个差异，在两个十六进制编辑器中同时跳转到它。");
         ImGui::NewLine();
         ImGuiExt::TextFormattedWrapped(
-            "By default, a simple byte-by-byte comparison algorithm is used. This is quick but will only identify byte modifications but doesn't match insertions or deletions.\n"
-            "For a more sophisticated comparison, you can select a different diffing algorithm from the settings menu (gear icon)."
+            "默认使用简单的逐字节比较算法。它速度很快，但只能识别字节修改，无法匹配插入或删除。\n"
+            "如需更复杂的比较，可以从设置菜单（齿轮图标）中选择不同的比较算法。"
         );
     }
 }

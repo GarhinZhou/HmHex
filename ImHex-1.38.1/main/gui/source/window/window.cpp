@@ -35,6 +35,7 @@
 #include <imgui_internal.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <fonts/vscode_icons.hpp>
 #include <hex/ui/imgui_imhex_extensions.h>
 #include <implot.h>
 #include <implot_internal.h>
@@ -712,7 +713,10 @@ namespace hex {
 
                     ImGui::SameLine();
 
-                    if (ImGui::CloseButton(ImGui::GetID("BannerCloseButton"), ImGui::GetCursorScreenPos())) {
+                    // OHOS: ImGui::CloseButton's "x" glyph does not render in
+                    // the bundled font, leaving an empty grey button. Use the
+                    // vscode icon font (rendered correctly elsewhere) instead.
+                    if (ImGui::Button(ICON_VS_CHROME_CLOSE)) {
                         banner->close();
                     }
                 }

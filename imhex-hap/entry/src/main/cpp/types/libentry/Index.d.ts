@@ -6,6 +6,7 @@ declare const nativeModule: {
   onScroll(x: number, y: number): void;
   setFileOpenCallback(callback: (multiple: number) => void): void;
   openFile(path: string): void;
+  cancelFileDialog(): void;
   setSaveFileCallback(callback: () => void): void;
   saveToFd(fd: number): void;
   setClipboardCallback(callback: (text: string) => void): void;
@@ -20,5 +21,8 @@ declare const nativeModule: {
   setCursorCallback(callback: (shape: number) => void): void;
   unlockFrameRate(): void;
   openFileDropped(path: string): void;
+  setSystemLanguage(language: string): void;
+  getRunningTaskCount(): number;
+  notifyWindowCloseRequested(): boolean;
 };
 export default nativeModule;

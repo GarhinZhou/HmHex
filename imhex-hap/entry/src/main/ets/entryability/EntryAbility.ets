@@ -70,7 +70,36 @@ export default class EntryAbility extends UIAbility {
       }
       hilog.info(0x0000, 'HmHex', 'Content loaded');
       this.setupWindow(windowStage);
+      this.setupCloseGuard(windowStage);
     });
+  }
+
+  /**
+   * Guards the system close button (top-right corner of the caption bar):
+   * the close is intercepted and handed over to ImHex's own close flow,
+   * which prompts for unsaved changes. The callback returns true (keep the
+   * window open) when ImHex took over; when ImHex is not running yet the
+   * window closes normally.
+   */
+  private setupCloseGuard(windowStage: window.WindowStage): void {
+    try {
+      windowStage.on('windowStageClose', () => {
+        hilog.info(0x0000, 'HmHex', 'system close button clicked');
+        try {
+          const handled: boolean = nativeModule.notifyWindowCloseRequested();
+          // true = ImHex took over the close (keep the window open, ImHex
+          // prompts and later exits via terminateSelf); false = ImHex is not
+          // running yet, let the window close normally.
+          return handled;
+        } catch (e) {
+          hilog.error(0x0000, 'HmHex', 'notifyWindowCloseRequested failed: %{public}s', JSON.stringify(e));
+          return false;
+        }
+      });
+      hilog.info(0x0000, 'HmHex', 'window close guard registered');
+    } catch (e) {
+      hilog.error(0x0000, 'HmHex', 'window close guard failed: %{public}s', JSON.stringify(e));
+    }
   }
 
   /**

@@ -220,10 +220,10 @@ namespace hex::plugin::builtin {
     }
 
     void ViewPatches::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This view shows a list of all patches (modifications, insertions, deletions) that were made to the current data source so far.");
+        ImGuiExt::TextFormattedWrapped("该视图显示到目前为止对当前数据源所做的所有补丁（修改、插入、删除）的列表。");
         ImGui::NewLine();
-        ImGuiExt::TextFormattedWrapped("The small arrow next to a patch indicates the current position in the undo/redo stack. When undoing operations, the arrow will move downwards and modifying any data will create new patches from the current position, discarding any patches above it.");
-        ImGuiExt::TextFormattedWrapped("Hovering over a patch will also show a tooltip with more detailed information about the patch and clicking on a patch will select the modified region in the hex editor.");
+        ImGuiExt::TextFormattedWrapped("补丁旁边的小箭头表示撤销/重做栈中的当前位置。撤销操作时箭头会向下移动，修改任何数据都会从当前位置创建新补丁，并丢弃其上方（更新）的补丁。");
+        ImGuiExt::TextFormattedWrapped("将鼠标悬停在补丁上还会显示包含补丁更详细信息的提示框，点击补丁会在十六进制编辑器中选中修改的区域。");
     }
 
 }

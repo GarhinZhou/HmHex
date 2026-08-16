@@ -469,6 +469,6 @@ namespace hex::plugin::builtin {
     }
 
     void ViewAchievements::drawHelpText() {
-        ImGuiExt::TextFormattedWrapped("This is the Achievements view. Before you ask yourself what achievements are doing in a hex editor: The Achievements are meant to be a fun way to learn about the various features of ImHex without having to read through the entire documentation. Read through the achievements, try to unlock them all, and have fun!");
+        ImGuiExt::TextFormattedWrapped("这是成就视图。在问自己十六进制编辑器里为什么会有成就之前：成就旨在让你以一种有趣的方式了解 HmHex 的各种功能，而无需通读整个文档。浏览成就列表，尝试全部解锁它们，玩得开心！");
     }
 }
